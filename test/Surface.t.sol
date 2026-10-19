@@ -94,16 +94,20 @@ contract SurfaceTest is ConduitTestBase {
     }
 
     function _assertWrites(Vm.AccountAccess[] memory accesses, uint256 expected) internal view {
+        uint256 recorded;
         uint256 writes;
         for (uint256 i; i < accesses.length; ++i) {
             for (uint256 j; j < accesses[i].storageAccesses.length; ++j) {
                 Vm.StorageAccess memory s = accesses[i].storageAccesses[j];
-                if (s.account != address(conduit) || !s.isWrite) continue;
+                if (s.account != address(conduit)) continue;
+                ++recorded;
+                if (!s.isWrite) continue;
                 assertEq(s.slot, keccak256(abi.encode(TOKEN_ID, uint256(1))));
                 assertEq(uint256(s.newValue), block.number);
                 ++writes;
             }
         }
+        assertGt(recorded, 0);
         assertEq(writes, expected);
     }
 

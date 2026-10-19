@@ -115,8 +115,9 @@ address: it makes the whole claim revert.
 - A token that charges a fee on transfers is charged twice on its way through the conduit.
 - Tokens sent to the conduit by mistake are stuck there.
 - The Voter calls whatever fee and bribe contracts a claim lists, so anyone can claim dust through a contract of their
-  own. That adds an entry to a veNFT's claim history, at most one per block, so readers should expect claims of
-  unknown tokens or tiny amounts.
+  own. Each such claim adds to a veNFT's claim history, and someone willing to pay for a claim in every block can make
+  the history as long as they like. Readers should expect claims of unknown tokens or tiny amounts, and may want to
+  limit how far back they walk.
 
 ## Deployment
 

@@ -107,13 +107,17 @@ contract ClaimTest is ConduitTestBase {
         assertEq(conduit.lastClaimBlock(TOKEN_ID), 105);
     }
 
-    function test_claim_emptyClaimKeepsThePointer() public {
+    function test_claim_emptyClaimsKeepThePointer() public {
         vm.roll(100);
         _earn(address(usdc), 100e6);
         _claim(stranger, _tokens(address(usdc)));
         vm.roll(105);
         assertEq(_previousClaimBlock(TOKEN_ID, _tokens(address(usdc))), 100);
         assertEq(conduit.lastClaimBlock(TOKEN_ID), 100);
+        _earn(address(usdc), 100e6);
+        assertEq(_previousClaimBlock(TOKEN_ID, _tokens(address(usdc))), 100);
+        assertEq(_previousClaimBlock(TOKEN_ID, _tokens(address(usdc))), 105);
+        assertEq(conduit.lastClaimBlock(TOKEN_ID), 105);
     }
 
     function test_claim_sameBlockClaimsPointToThatBlock() public {

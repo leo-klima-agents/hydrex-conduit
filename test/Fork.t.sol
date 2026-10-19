@@ -453,6 +453,7 @@ contract ForkTest is Test {
         emit ImmutableVeTokenConduit.Claimed(TOKEN_ID, HOLDER, stranger, tokens, amounts, cuts, 0);
         vm.prank(stranger);
         assertEq(conduit.claim(TOKEN_ID, fees, bribes, tokens), amounts);
+        assertEq(conduit.lastClaimBlock(TOKEN_ID), block.number);
 
         _assertSplit(tokens, amounts, holderBefore, treasuryBefore);
         uint256[] memory strangerAfter = _balances(tokens, stranger);
