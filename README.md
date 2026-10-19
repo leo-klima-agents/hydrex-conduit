@@ -83,10 +83,11 @@ and a vote costs up to about 9.7M gas.
 
 ### Claiming rewards
 
-For an opted-in veNFT, find the fee and bribe contracts where `earned(tokenId, token)` is positive. Claim one token
-at a time and pass only the contracts that earned it: the conduit asks every contract for every token, and asking a
-contract that has nothing to pay can cost as much as one that does. Bribe contracts only look back 50 epochs from a
-veNFT's last claim, so after a long gap you may need to claim more than once.
+For an opted-in veNFT, find the fee and bribe contracts where `earned(tokenId, token)` is positive. The first time
+you claim for a veNFT, or after a long gap, pass only the contracts that owe each token, for example by claiming one
+token at a time. `claim` asks every contract for every token, and a bribe walks back up to 50 epochs for any token it
+hasn't paid recently. After that, a combined claim is cheap. A bribe never looks back more than 50 epochs, so after a
+longer gap you may need to claim more than once.
 
 Leave out any token that can't currently be sent to the treasury or the owner, such as USDC to a blocklisted
 address: it makes the whole claim revert.
