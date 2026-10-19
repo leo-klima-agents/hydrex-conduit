@@ -5,6 +5,7 @@ cd "$(dirname "$0")/.."
 U=test/upstream/hydrex
 I=src/interfaces
 status=0
+checked=()
 
 sig() {
   awk -v name="$2" '
@@ -40,17 +41,17 @@ sig() {
 }
 
 reward_data_sig() {
-  local file=$U/bribe/BribeV2.sol types names
+  local file=$U/bribe/BribeV2.sol
   grep -qF 'mapping(address => mapping(uint256 => Reward)) public rewardData;' "$file" || return 1
-  types=$(awk '/struct Reward \{/ { on = 1; next } on && /\}/ { exit } on { printf "%s%s", sep, $1; sep = "," }' "$file")
-  names=$(awk '/struct Reward \{/ { on = 1; next } on && /\}/ { exit } on { sub(/;.*/, "", $2); printf "%s%s", sep, $2; sep = "," }' "$file")
-  [ "$names" = "periodFinish,rewardsPerEpoch,lastUpdateTime" ] || return 1
+  tr -s '[:space:]' ' ' < "$file" |
+    grep -F 'struct Reward { uint256 periodFinish; uint256 rewardsPerEpoch; uint256 lastUpdateTime; }' > /dev/null || return 1
   grep -qF "returns (uint256 periodFinish, uint256 rewardsPerEpoch, uint256 lastUpdateTime);" "$I/IBribe.sol" || return 1
-  echo "rewardData(address,uint256)($types)"
+  echo "rewardData(address,uint256)(uint256,uint256,uint256)"
 }
 
 check() {
   local iface=$1 name=$2 upstream=$3 ours theirs
+  checked+=("$name")
   ours=$(sig "$I/$iface" "$name") || { echo "::error::$name not declared in $I/$iface" >&2; status=1; return; }
   if [ "$upstream" = mapping ]; then
     theirs=$(reward_data_sig) || theirs=missing
@@ -83,8 +84,7 @@ check IVotingEscrow.sol setConduitApprovalConfig votingescrow/IVotingEscrowV2_Lo
 check IBribe.sol rewardData mapping
 
 declared=$(grep -ohE 'function [A-Za-z_]+\(' "$I/IVoter.sol" "$I/IVotingEscrow.sol" "$I/IBribe.sol" | sed -E 's/function |\(//g' | sort)
-checked=$(grep -oE '^check I[A-Za-z]+\.sol [A-Za-z_]+' script/check-signatures.sh | awk '{ print $3 }' | sort)
-unchecked=$(comm -23 <(echo "$declared") <(echo "$checked") | grep -vx ownerOf || true)
+unchecked=$(comm -23 <(echo "$declared") <(printf '%s\n' "${checked[@]}" | sort) | grep -vx ownerOf || true)
 if [ -n "$unchecked" ]; then
   echo "::error::not checked against upstream: $unchecked" >&2
   status=1

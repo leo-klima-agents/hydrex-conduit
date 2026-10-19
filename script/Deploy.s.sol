@@ -42,24 +42,19 @@ contract Deploy is Script {
     }
 
     function predict() public pure returns (address) {
-        return _predict(initCode());
-    }
-
-    function _predict(bytes memory code) internal pure returns (address) {
-        return vm.computeCreate2Address(SALT, keccak256(code), CREATE2_FACTORY);
+        return vm.computeCreate2Address(SALT, keccak256(initCode()), CREATE2_FACTORY);
     }
 
     function run() external returns (address deployed) {
         require(CREATE2_FACTORY.code.length != 0, "CREATE2 deployer not present");
-        bytes memory code = initCode();
-        deployed = _predict(code);
+        deployed = predict();
         console.log("ImmutableVeTokenConduit", deployed);
         if (deployed.code.length != 0) {
             console.log("already deployed");
             return deployed;
         }
         vm.startBroadcast();
-        (bool ok,) = CREATE2_FACTORY.call(bytes.concat(SALT, code));
+        (bool ok,) = CREATE2_FACTORY.call(bytes.concat(SALT, initCode()));
         vm.stopBroadcast();
         require(ok && deployed.code.length != 0, "CREATE2 deploy failed");
         console.log("deployed");

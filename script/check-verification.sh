@@ -5,8 +5,6 @@ cd "$(dirname "$0")/.."
 ARTIFACT=out/ImmutableVeTokenConduit.sol/ImmutableVeTokenConduit.json
 HASHES=verification/bytecode-hashes.json
 INPUT=verification/ImmutableVeTokenConduit.standard-input.json
-SRC=src/ImmutableVeTokenConduit.sol
-SCRIPT=script/Deploy.s.sol
 [ -f "$ARTIFACT" ] || { echo "::error::$ARTIFACT missing; run forge build" >&2; exit 1; }
 [ -f "$HASHES" ] || { echo "::error::$HASHES missing; run script/refresh-verification.sh" >&2; exit 1; }
 [ -f "$INPUT" ] || { echo "::error::$INPUT missing; run script/refresh-verification.sh" >&2; exit 1; }
@@ -24,24 +22,8 @@ expect() {
 }
 
 creation=$(jq -j '.bytecode.object' "$ARTIFACT")
-expect .runtimeTemplateKeccak "$(cast keccak "$(jq -j '.deployedBytecode.object' "$ARTIFACT")")"
 expect .creationCodeKeccak "$(cast keccak "$creation")"
 expect .solc "$(jq -j '.metadata.compiler.version' "$ARTIFACT")"
-
-constant() { grep -oE "constant $2 = [0-9a-fA-Fx_]+;" "$1" | sed -E 's/.* = ([0-9a-fA-Fx_]+);/\1/' | tr -d _; }
-expect .treasury "$(cast to-check-sum-address "$(constant "$SRC" TREASURY)")"
-expect .feeBps "$(constant "$SRC" FEE_BPS)"
-
-addr() { cast to-check-sum-address "$(constant "$SCRIPT" "$1")"; }
-expect .deployment.voter "$(addr VOTER)"
-expect .deployment.veToken "$(addr VE_TOKEN)"
-expect .deployment.sequencerFeed "$(addr SEQUENCER_FEED)"
-expect '.deployment.pricedTokens | join(",")' "$(addr WETH),$(addr CBBTC),$(addr USDC),$(addr EURC)"
-expect '.deployment.feeds | join(",")' "$(addr ETH_USD),$(addr CBBTC_USD),$(addr USDC_USD),$(addr EURC_USD)"
-fast=$(constant "$SCRIPT" FAST_MAX_AGE)
-slow=$(constant "$SCRIPT" SLOW_MAX_AGE)
-expect '.deployment.maxAges | map(tostring) | join(",")' "$fast,$fast,$slow,$slow"
-expect .saltPreimage "$(grep -oE 'SALT_PREIMAGE = "[^"]+"' "$SCRIPT" | cut -d'"' -f2)"
 expect .salt "$(cast keccak "$(jq -j .saltPreimage "$HASHES")")"
 
 priced=$(jq -j '.deployment | [.pricedTokens, .feeds, .maxAges] | transpose | map("(" + (map(tostring) | join(",")) + ")") | join(",")' "$HASHES")

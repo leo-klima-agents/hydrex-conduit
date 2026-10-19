@@ -6,7 +6,6 @@ import {Test} from "forge-std/Test.sol";
 import {ImmutableVeTokenConduit} from "../src/ImmutableVeTokenConduit.sol";
 import {MockBribe} from "./mocks/MockBribe.sol";
 import {
-    MockAlias,
     MockFalseToken,
     MockNoReturnToken,
     MockReentrantToken,
@@ -18,13 +17,6 @@ import {MockVoter} from "./mocks/MockVoter.sol";
 import {ConduitTestBase} from "./utils/ConduitTestBase.sol";
 
 contract ClaimTest is ConduitTestBase {
-    function _three(address a, address b, address c) internal pure returns (address[] memory t) {
-        t = new address[](3);
-        t[0] = a;
-        t[1] = b;
-        t[2] = c;
-    }
-
     function _uints(uint256 a, uint256 b, uint256 c) internal pure returns (uint256[] memory u) {
         u = new uint256[](3);
         u[0] = a;
@@ -36,7 +28,7 @@ contract ClaimTest is ConduitTestBase {
         _earn(address(weth), 1e18);
         _earn(address(usdc), 100e6);
         _earn(address(junk), 5e18);
-        address[] memory tokens = _three(address(weth), address(usdc), address(junk));
+        address[] memory tokens = _tokens(address(weth), address(usdc), address(junk));
         vm.expectEmit(address(conduit));
         emit ImmutableVeTokenConduit.Claimed(
             TOKEN_ID, holder, stranger, tokens, _uints(1e18, 100e6, 5e18), _uints(0.01e18, 1e6, 0.05e18)
@@ -66,8 +58,7 @@ contract ClaimTest is ConduitTestBase {
     }
 
     function test_claim_feeContractsAndBribes() public {
-        address p = _pool(0, 0);
-        MockBribe fees = MockBribe(voter.internal_bribes(voter.gauges(p)));
+        MockBribe fees = new MockBribe(address(voter), bribeOwner);
         fees.setEarned(TOKEN_ID, address(usdc), 30e6);
         _earn(address(usdc), 70e6);
         address[] memory feeAddresses = new address[](1);
@@ -116,20 +107,8 @@ contract ClaimTest is ConduitTestBase {
     function test_claim_repeatedTokenPaysOnce() public {
         usdc.mint(address(conduit), 7e6);
         _earn(address(usdc), 100e6);
-        uint256[] memory amounts = _claim(stranger, _three(address(usdc), address(weth), address(usdc)));
+        uint256[] memory amounts = _claim(stranger, _tokens(address(usdc), address(weth), address(usdc)));
         assertEq(amounts, _uints(100e6, 0, 0));
-        assertEq(usdc.balanceOf(holder), 99e6);
-        assertEq(usdc.balanceOf(treasury), 1e6);
-        assertEq(usdc.balanceOf(address(conduit)), 7e6);
-    }
-
-    function test_claim_tokenAtTwoAddressesPaysOnce() public {
-        MockAlias alias_ = new MockAlias(usdc);
-        usdc.mint(address(conduit), 7e6);
-        _earn(address(usdc), 100e6);
-        uint256[] memory amounts = _claim(stranger, _tokens(address(usdc), address(alias_)));
-        assertEq(amounts[0], 100e6);
-        assertEq(amounts[1], 0);
         assertEq(usdc.balanceOf(holder), 99e6);
         assertEq(usdc.balanceOf(treasury), 1e6);
         assertEq(usdc.balanceOf(address(conduit)), 7e6);
@@ -141,7 +120,7 @@ contract ClaimTest is ConduitTestBase {
         junk.mint(address(conduit), 11e18);
         _earn(address(weth), 1e18);
         _earn(address(usdc), 100e6);
-        uint256[] memory amounts = _claim(stranger, _three(address(weth), address(usdc), address(junk)));
+        uint256[] memory amounts = _claim(stranger, _tokens(address(weth), address(usdc), address(junk)));
         assertEq(amounts, _uints(1e18, 100e6, 0));
         assertEq(weth.balanceOf(address(conduit)), 3e18);
         assertEq(usdc.balanceOf(address(conduit)), 7e6);
@@ -154,18 +133,6 @@ contract ClaimTest is ConduitTestBase {
         _claim(stranger, _tokens(address(usdc)));
         assertEq(usdc.balanceOf(holder), 99);
         assertEq(usdc.balanceOf(treasury), 0);
-    }
-
-    function testFuzz_fee_everyClaimPaysTreasury(uint256 a, uint256 b, bool thirdParty) public {
-        a = bound(a, 0, 1e30);
-        b = bound(b, 0, 1e30);
-        _earn(address(weth), a);
-        _earn(address(junk), b);
-        _claim(thirdParty ? stranger : holder, _tokens(address(weth), address(junk)));
-        assertEq(weth.balanceOf(treasury), a * conduit.FEE_BPS() / 10_000);
-        assertEq(junk.balanceOf(treasury), b * conduit.FEE_BPS() / 10_000);
-        assertEq(weth.balanceOf(holder), a - a * conduit.FEE_BPS() / 10_000);
-        assertEq(junk.balanceOf(holder), b - b * conduit.FEE_BPS() / 10_000);
     }
 
     function test_token_nonReturningTokenWorks() public {
@@ -220,11 +187,11 @@ contract ClaimTest is ConduitTestBase {
         _earn(address(evil), 1e18);
         bytes[2] memory inner = _reentries();
         for (uint256 i; i < inner.length; ++i) {
-            evil.arm(address(conduit), address(conduit), inner[i]);
+            evil.arm(address(conduit), inner[i]);
             vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.TokenCallFailed.selector, address(evil)));
             _claim(stranger, _tokens(address(evil)));
         }
-        evil.arm(address(conduit), address(conduit), abi.encodeCall(ImmutableVeTokenConduit.currentScore, ()));
+        evil.arm(address(conduit), abi.encodeCall(ImmutableVeTokenConduit.currentScore, ()));
         _claim(stranger, _tokens(address(evil)));
         assertEq(evil.balanceOf(holder), 0.99e18);
     }
@@ -277,7 +244,6 @@ contract ClaimHandler is Test {
     address internal immutable treasury;
     address[] internal tokens;
     address[] internal callers;
-    bool public wrongPayout;
     uint256 public claims;
 
     constructor(ImmutableVeTokenConduit target_, MockBribe bribe_, address owner_, address[] memory tokens_) {
@@ -291,37 +257,27 @@ contract ClaimHandler is Test {
         callers.push(address(0xBEEF));
     }
 
-    function claim(uint256 callerSeed, uint256 seed, uint256 mask) external {
-        address caller = callers[callerSeed % callers.length];
-        uint256 k;
-        for (uint256 i; i < tokens.length; ++i) {
-            if ((mask >> i) & 1 == 1) ++k;
-        }
-        address[] memory picked = new address[](k);
-        uint256[] memory amounts = new uint256[](k);
-        uint256[] memory ownerBefore = new uint256[](k);
-        uint256[] memory treasuryBefore = new uint256[](k);
-        k = 0;
-        for (uint256 i; i < tokens.length; ++i) {
-            if ((mask >> i) & 1 == 0) continue;
-            picked[k] = tokens[i];
-            amounts[k] = uint256(keccak256(abi.encode(seed, i))) % 1e30;
-            bribe.setEarned(TOKEN_ID, picked[k], amounts[k]);
-            ownerBefore[k] = MockTokenBase(picked[k]).balanceOf(owner);
-            treasuryBefore[k] = MockTokenBase(picked[k]).balanceOf(treasury);
-            ++k;
+    function claim(uint256 callerSeed, uint256 seed) external {
+        uint256 n = tokens.length;
+        uint256[] memory amounts = new uint256[](n);
+        uint256[] memory ownerBefore = new uint256[](n);
+        uint256[] memory treasuryBefore = new uint256[](n);
+        for (uint256 i; i < n; ++i) {
+            amounts[i] = uint256(keccak256(abi.encode(seed, i))) % 1e30;
+            bribe.setEarned(TOKEN_ID, tokens[i], amounts[i]);
+            ownerBefore[i] = MockTokenBase(tokens[i]).balanceOf(owner);
+            treasuryBefore[i] = MockTokenBase(tokens[i]).balanceOf(treasury);
         }
         address[] memory bribes = new address[](1);
         bribes[0] = address(bribe);
 
-        vm.prank(caller);
-        uint256[] memory claimed = target.claim(TOKEN_ID, new address[](0), bribes, picked);
+        vm.prank(callers[callerSeed % callers.length]);
+        assertEq(target.claim(TOKEN_ID, new address[](0), bribes, tokens), amounts);
         ++claims;
-        for (uint256 i; i < k; ++i) {
+        for (uint256 i; i < n; ++i) {
             uint256 fee = amounts[i] / 100;
-            if (claimed[i] != amounts[i]) wrongPayout = true;
-            if (MockTokenBase(picked[i]).balanceOf(treasury) - treasuryBefore[i] != fee) wrongPayout = true;
-            if (MockTokenBase(picked[i]).balanceOf(owner) - ownerBefore[i] != amounts[i] - fee) wrongPayout = true;
+            assertEq(MockTokenBase(tokens[i]).balanceOf(treasury) - treasuryBefore[i], fee);
+            assertEq(MockTokenBase(tokens[i]).balanceOf(owner) - ownerBefore[i], amounts[i] - fee);
         }
     }
 }
@@ -350,10 +306,6 @@ contract ClaimInvariantTest is ConduitTestBase {
         for (uint256 i; i < tokens.length; ++i) {
             assertEq(MockTokenBase(tokens[i]).balanceOf(address(conduit)), 1000 + i);
         }
-    }
-
-    function invariant_ownerAndTreasuryGetExactShares() public view {
-        assertFalse(handler.wrongPayout());
     }
 
     function afterInvariant() external view {

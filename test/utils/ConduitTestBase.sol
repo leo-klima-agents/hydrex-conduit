@@ -157,6 +157,13 @@ abstract contract ConduitTestBase is Test {
         t[1] = b;
     }
 
+    function _tokens(address a, address b, address c) internal pure returns (address[] memory t) {
+        t = new address[](3);
+        t[0] = a;
+        t[1] = b;
+        t[2] = c;
+    }
+
     function _claim(address caller, address[] memory tokens) internal returns (uint256[] memory) {
         vm.prank(caller);
         return conduit.claim(TOKEN_ID, new address[](0), _bribes(), tokens);

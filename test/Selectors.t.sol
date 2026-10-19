@@ -52,19 +52,13 @@ contract SelectorsTest is Test {
         p[20] = Pin(IAggregatorV3.latestRoundData.selector, 0xfeaf968c, "latestRoundData()");
     }
 
-    function test_selectors_literals() public pure {
+    function test_selectors_matchLiteralsAndSignatures() public pure {
         Pin[] memory p = _pins();
         for (uint256 i; i < p.length; ++i) {
             assertEq(p[i].selector, p[i].literal, p[i].signature);
-        }
-        assertEq(IAggregatorV3.decimals.selector, IERC20.decimals.selector);
-    }
-
-    function test_selectors_keccak() public pure {
-        Pin[] memory p = _pins();
-        for (uint256 i; i < p.length; ++i) {
             assertEq(p[i].selector, bytes4(keccak256(bytes(p[i].signature))), p[i].signature);
         }
+        assertEq(IAggregatorV3.decimals.selector, IERC20.decimals.selector);
     }
 
     function test_selectors_conduitVoteMatchesVoter() public pure {

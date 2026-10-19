@@ -15,10 +15,6 @@ abstract contract MockTokenBase {
         balanceOf[to] += amount;
     }
 
-    function move(address from, address to, uint256 amount) external {
-        _transfer(from, to, amount);
-    }
-
     function setBlocked(address account, bool isBlocked) external {
         blocked[account] = isBlocked;
     }
@@ -84,21 +80,19 @@ contract MockTaxToken is MockToken {
 }
 
 contract MockReentrantToken is MockToken {
-    address public from;
-    address public target;
+    address public conduit;
     bytes public data;
 
     constructor(uint8 decimals_) MockToken(decimals_) {}
 
-    function arm(address from_, address target_, bytes calldata data_) external {
-        from = from_;
-        target = target_;
+    function arm(address conduit_, bytes calldata data_) external {
+        conduit = conduit_;
         data = data_;
     }
 
     function _transfer(address sender, address to, uint256 amount) internal override {
-        if (sender == from) {
-            (bool ok, bytes memory ret) = target.call(data);
+        if (sender == conduit) {
+            (bool ok, bytes memory ret) = conduit.call(data);
             if (!ok) {
                 assembly ("memory-safe") {
                     revert(add(ret, 0x20), mload(ret))
@@ -106,22 +100,5 @@ contract MockReentrantToken is MockToken {
             }
         }
         super._transfer(sender, to, amount);
-    }
-}
-
-contract MockAlias {
-    MockTokenBase internal immutable token;
-
-    constructor(MockTokenBase token_) {
-        token = token_;
-    }
-
-    function balanceOf(address account) external view returns (uint256) {
-        return token.balanceOf(account);
-    }
-
-    function transfer(address to, uint256 amount) external returns (bool) {
-        token.move(msg.sender, to, amount);
-        return true;
     }
 }

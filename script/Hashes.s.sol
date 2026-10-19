@@ -8,6 +8,7 @@ contract Hashes is Deploy {
     function record() external returns (address predicted) {
         require(block.chainid == 8453, "run with --fork-url pointing at Base");
         predicted = predict();
+        string memory artifact = vm.readFile("out/ImmutableVeTokenConduit.sol/ImmutableVeTokenConduit.json");
         ImmutableVeTokenConduit local =
             new ImmutableVeTokenConduit{salt: keccak256("Hashes")}(VOTER, VE_TOKEN, SEQUENCER_FEED, pricedTokens());
 
@@ -35,25 +36,11 @@ contract Hashes is Deploy {
         string memory root = "hashes";
         string memory json =
             vm.serializeString(root, "contract", "src/ImmutableVeTokenConduit.sol:ImmutableVeTokenConduit");
-        json = vm.serializeString(
-            root,
-            "solc",
-            vm.parseJsonString(
-                vm.readFile("out/ImmutableVeTokenConduit.sol/ImmutableVeTokenConduit.json"),
-                ".metadata.compiler.version"
-            )
-        );
+        json = vm.serializeString(root, "solc", vm.parseJsonString(artifact, ".metadata.compiler.version"));
         json = vm.serializeAddress(root, "create2Deployer", CREATE2_FACTORY);
         json = vm.serializeString(root, "saltPreimage", SALT_PREIMAGE);
         json = vm.serializeBytes32(root, "salt", SALT);
-        json = vm.serializeAddress(root, "treasury", local.TREASURY());
-        json = vm.serializeUint(root, "feeBps", local.FEE_BPS());
         json = vm.serializeBytes32(root, "creationCodeKeccak", keccak256(type(ImmutableVeTokenConduit).creationCode));
-        json = vm.serializeBytes32(
-            root,
-            "runtimeTemplateKeccak",
-            keccak256(vm.getDeployedCode("ImmutableVeTokenConduit.sol:ImmutableVeTokenConduit"))
-        );
         json = vm.serializeString(root, "deployment", depJson);
         vm.writeJson(json, "verification/bytecode-hashes.json");
     }

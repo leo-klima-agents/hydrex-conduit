@@ -23,7 +23,6 @@ contract ImmutableVeTokenConduit {
     }
 
     struct Pool {
-        address pool;
         bool alive;
         uint256 value;
         uint256 others;
@@ -36,8 +35,6 @@ contract ImmutableVeTokenConduit {
         bool voted;
         Oracle[] oracles;
         uint256[] answers;
-        Pool[] cache;
-        uint256 cached;
     }
 
     address public constant TREASURY = 0x450c72de8c0079B49AcedF294a13011bd09D125B;
@@ -162,9 +159,9 @@ contract ImmutableVeTokenConduit {
         }
         address owner = IVotingEscrow(veToken).ownerOf(tokenId);
         uint256 n = tokens.length;
-        amounts = new uint256[](n);
+        uint256[] memory before = new uint256[](n);
         for (uint256 i; i < n; ++i) {
-            amounts[i] = IERC20(tokens[i]).balanceOf(address(this));
+            before[i] = IERC20(tokens[i]).balanceOf(address(this));
         }
 
         if (feeAddresses.length != 0) {
@@ -180,9 +177,10 @@ contract ImmutableVeTokenConduit {
                 );
         }
 
+        amounts = new uint256[](n);
         uint256[] memory fees = new uint256[](n);
         for (uint256 i; i < n; ++i) {
-            amounts[i] = IERC20(tokens[i]).balanceOf(address(this)) - amounts[i];
+            amounts[i] = IERC20(tokens[i]).balanceOf(address(this)) - before[i];
             fees[i] = amounts[i] * FEE_BPS / 10_000;
             if (fees[i] != 0) _transfer(tokens[i], TREASURY, fees[i]);
             if (amounts[i] != fees[i]) _transfer(tokens[i], owner, amounts[i] - fees[i]);
@@ -202,7 +200,6 @@ contract ImmutableVeTokenConduit {
         for (uint256 i; i < ctx.oracles.length; ++i) {
             ctx.answers[i] = _answer(ctx.oracles[i].feed, ctx.oracles[i].maxAge);
         }
-        ctx.cache = new Pool[](2 * MAX_POOLS);
     }
 
     function _currentScore(Context memory ctx) private view returns (uint256 s) {
@@ -240,19 +237,14 @@ contract ImmutableVeTokenConduit {
     }
 
     function _pool(Context memory ctx, address pool) private view returns (Pool memory p) {
-        for (uint256 i; i < ctx.cached; ++i) {
-            if (ctx.cache[i].pool == pool) return ctx.cache[i];
-        }
         IVoter v = IVoter(voter);
         address gauge = v.gauges(pool);
-        p.pool = pool;
         p.alive = v.isAlive(gauge);
         if (p.alive) {
             p.value = _bribeValue(ctx, v.external_bribes(gauge)) + _bribeValue(ctx, v.internal_bribes(gauge));
             if (ctx.voted) p.own = v.votes(address(this), pool);
             p.others = v.weights(pool) - p.own;
         }
-        if (ctx.cached < ctx.cache.length) ctx.cache[ctx.cached++] = p;
     }
 
     function _bribeValue(Context memory ctx, address bribe) private view returns (uint256 usd) {

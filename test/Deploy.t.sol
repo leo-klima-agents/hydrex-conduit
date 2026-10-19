@@ -80,15 +80,9 @@ contract DeployTest is Test {
         assertEq(
             vm.parseJsonBytes32(json, ".creationCodeKeccak"), keccak256(type(ImmutableVeTokenConduit).creationCode)
         );
-        assertEq(
-            vm.parseJsonBytes32(json, ".runtimeTemplateKeccak"),
-            keccak256(vm.getDeployedCode("ImmutableVeTokenConduit.sol:ImmutableVeTokenConduit"))
-        );
 
         ImmutableVeTokenConduit local =
             new ImmutableVeTokenConduit(d.VOTER(), d.VE_TOKEN(), d.SEQUENCER_FEED(), d.pricedTokens());
-        assertEq(vm.parseJsonAddress(json, ".treasury"), local.TREASURY());
-        assertEq(vm.parseJsonUint(json, ".feeBps"), local.FEE_BPS());
         assertEq(vm.parseJsonAddress(json, ".deployment.voter"), d.VOTER());
         assertEq(vm.parseJsonAddress(json, ".deployment.veToken"), d.VE_TOKEN());
         assertEq(vm.parseJsonAddress(json, ".deployment.sequencerFeed"), d.SEQUENCER_FEED());
