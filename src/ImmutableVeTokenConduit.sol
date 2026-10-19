@@ -157,7 +157,9 @@ contract ImmutableVeTokenConduit {
         address[] calldata bribeAddresses,
         address[] calldata tokens
     ) external nonReentrant returns (uint256[] memory amounts) {
-        if (feeAddresses.length + bribeAddresses.length == 0) revert NoRewardContracts();
+        if (feeAddresses.length == 0 && bribeAddresses.length == 0) {
+            revert NoRewardContracts();
+        }
         address owner = IVotingEscrow(veToken).ownerOf(tokenId);
         uint256 n = tokens.length;
         amounts = new uint256[](n);
