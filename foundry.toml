@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 Léo de Souza
+# SPDX-License-Identifier: MIT
+
+[profile.default]
+solc_version = "0.8.37"
+evm_version = "prague"
+optimizer = true
+optimizer_runs = 1_000_000
+via_ir = true
+bytecode_hash = "ipfs"
+cbor_metadata = true
+remappings = ["forge-std/=lib/forge-std/src/"]
+skip = ["test/upstream/**"]
+fs_permissions = [
+  { access = "read", path = "./test/upstream" },
+  { access = "read", path = "./test/fixtures" },
+  { access = "read", path = "./out" },
+  { access = "read-write", path = "./verification" },
+]
+
+[profile.ci.fuzz]
+runs = 10_000
+
+[invariant]
+depth = 100
+
+[profile.ci.invariant]
+runs = 1_000
+
+[fmt]
+ignore = ["./test/upstream/**"]
+
+# Lints that fire on src/ by design: loops over pools, bribes, tokens and swaps make calls and revert; epochs and
+# feed ages compare timestamps; vote and claim hold a lock; tuples from Chainlink and bribes are read in part;
+# accumulators start at zero; and a claim requires balances to return exactly to where they were.
+[profile.strict.lint]
+exclude_lints = [
+  "inline-assembly",
+  "calls-loop",
+  "require-revert-in-loop",
+  "block-timestamp",
+  "reentrancy-no-eth",
+  "reentrancy-events",
+  "unused-return",
+  "uninitialized-local",
+  "incorrect-strict-equality",
+]
+
+[lint]
+ignore = ["test/upstream/**"]
+exclude_lints = [
+  "inline-assembly",
+  "calls-loop",
+  "require-revert-in-loop",
+  "block-timestamp",
+  "reentrancy-no-eth",
+  "reentrancy-events",
+  "unused-return",
+  "uninitialized-local",
+  "incorrect-strict-equality",
+  "environment-read-across-mutation",
+]

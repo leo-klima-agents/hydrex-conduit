@@ -1,0 +1,200 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Léo de Souza
+# SPDX-License-Identifier: MIT
+"""Writes test/fixtures/fork.json from Base at one block.
+
+Usage: BASE_RPC_URL=<archive rpc> test/fixtures/generate.py [block]
+
+It records what test/Fork.t.sol replays: the epoch's whitelisted rewards and other voters' weights on the best
+pools, the water-filling allocation over them and its expected score, token 14247's claimable rewards, and
+KyberSwap routes for the claimed WETH and HYDX that pay the fork test's conduit address.
+"""
+
+import json
+import math
+import os
+import sys
+import time
+import urllib.request
+
+RPC = os.environ["BASE_RPC_URL"]
+KYBER = "https://aggregator-api.kyberswap.com/base/api/v1"
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fork.json")
+
+VOTER = "0xc69E3eF39E3fFBcE2A1c570f8d3ADF76909ef17b"
+VE = "0x25B2ED7149fb8A05f6eF9407d9c8F878f59cd1e1"
+KLIMA_CONDUIT = "0xdE91885cF35ac57DF0c4A75c16862127dBe8317c"
+CONDUIT = "0x00000000000000000000000000000000c0De5eEd"
+TOKEN_ID = 14247
+WEEK = 604800
+MAX_POOLS = 20
+GAS_POOLS = 40
+USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+WETH = "0x4200000000000000000000000000000000000006"
+HYDX = "0x00000e7efa313F4E11Bfff432471eD9423AC6B30"
+# token, feed, mul, div: amount * answer * mul // div is 18-decimal USD, as in the contract.
+PRICED = [
+    (WETH, "0x50015f8b17fb2C290Dde41fDc246ed0dcEE93a8b", 1, 10**8),
+    ("0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf", "0x07DA0E54543a844a80ABE69c8A12F22B3aA59f9D", 100, 1),
+    (USDC, "0x7e860098F58bBFC8648a4311b374B1D669a2bc6B", 10**4, 1),
+    ("0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42", "0xDAe398520e2B67cd3f27aeF9Cf14D93D927f8250", 10**4, 1),
+]
+
+
+def rpc(batch):
+    out = []
+    for i in range(0, len(batch), 40):
+        time.sleep(1)
+        chunk = [{"jsonrpc": "2.0", "id": j, "method": m, "params": p} for j, (m, p) in enumerate(batch[i : i + 40])]
+        req = urllib.request.Request(RPC, json.dumps(chunk).encode(), {"content-type": "application/json"})
+        res = sorted(json.load(urllib.request.urlopen(req)), key=lambda r: r["id"])
+        for r in res:
+            if "error" in r:
+                raise RuntimeError(r["error"])
+            out.append(r["result"])
+    return out
+
+
+def word(x):
+    return (x[2:].lower() if isinstance(x, str) else format(x, "x")).rjust(64, "0")
+
+
+def calls(block, items):
+    """items: (to, selector, args) -> list of 32-byte words per result."""
+    tag = hex(block)
+    res = rpc([("eth_call", [{"to": to, "data": sel + "".join(word(a) for a in args)}, tag]) for to, sel, args in items])
+    return [[int(r[2 + 64 * k : 2 + 64 * (k + 1)], 16) for k in range((len(r) - 2) // 64)] for r in res]
+
+
+def addr(n):
+    return "0x" + format(n, "040x")
+
+
+def share(b, v, x):
+    d = v + x
+    return b // d * x + b % d * x // d
+
+
+def waterfill(values, others, power):
+    """Continuous optimum of sum b x / (v + x) with sum x = power, over pools with v > 0."""
+    lo, hi = 0.0, max(b / v for b, v in zip(values, others))
+    for _ in range(200):
+        lam = (lo + hi) / 2
+        total = sum(max(0.0, math.sqrt(b * v / lam) - v) for b, v in zip(values, others))
+        lo, hi = (lam, hi) if total > power else (lo, lam)
+    return [max(0.0, math.sqrt(b * v / hi) - v) for b, v in zip(values, others)]
+
+
+def kyber(token_in, amount_in, deadline):
+    q = f"{KYBER}/routes?tokenIn={token_in}&tokenOut={USDC}&amountIn={amount_in}&excludeRFQSources=true"
+    hdr = {"x-client-id": "hydrex-conduit-tests", "content-type": "application/json", "user-agent": "hydrex-conduit"}
+    summary = json.load(urllib.request.urlopen(urllib.request.Request(q, headers=hdr)))["data"]["routeSummary"]
+    body = {"routeSummary": summary, "sender": CONDUIT, "recipient": CONDUIT, "slippageTolerance": 50, "deadline": deadline}
+    req = urllib.request.Request(f"{KYBER}/route/build", json.dumps(body).encode(), hdr)
+    built = json.load(urllib.request.urlopen(req))["data"]
+    assert int(built["amountIn"]) == amount_in
+    return {"router": built["routerAddress"], "data": built["data"], "amountOut": str(built["amountOut"])}
+
+
+def main():
+    latest = int(rpc([("eth_blockNumber", [])])[0], 16)
+    block = int(sys.argv[1]) if len(sys.argv) > 1 else latest - 2
+    timestamp = int(rpc([("eth_getBlockByNumber", [hex(block), False])])[0]["timestamp"], 16)
+    assert rpc([("eth_getCode", [CONDUIT, hex(block)])])[0] == "0x"
+
+    (klima_n,) = calls(block, [(VOTER, "0x8daeaa5a", [KLIMA_CONDUIT])])[0]
+    kpools = [addr(r[0]) for r in calls(block, [(VOTER, "0xc48f5af4", [KLIMA_CONDUIT, i]) for i in range(klima_n)])]
+    kg = [addr(r[0]) for r in calls(block, [(VOTER, "0xb9a09fd5", [p]) for p in kpools])]
+    kext = [addr(r[0]) for r in calls(block, [(VOTER, "0xae21c4cb", [g]) for g in kg])]
+    kint = [addr(r[0]) for r in calls(block, [(VOTER, "0xeae40f26", [g]) for g in kg])]
+    claim = {}
+    for name, tokens in (("stranger", [USDC, WETH]), ("owner", [HYDX])):
+        e = {
+            t: [r[0] for r in calls(block, [(b, "0xe39c08fc", [TOKEN_ID, t]) for b in kext + kint])] for t in tokens
+        }
+        claim[name] = {
+            "bribes": [b for i, b in enumerate(kext) if any(e[t][i] for t in tokens)],
+            "fees": [b for i, b in enumerate(kint) if any(e[t][len(kext) + i] for t in tokens)],
+            "amounts": [str(sum(e[t])) for t in tokens],
+            "tokens": tokens,
+        }
+    deadline = timestamp + 365 * 86400
+    claim["stranger"]["route"] = kyber(WETH, int(claim["stranger"]["amounts"][1]), deadline)
+    claim["owner"]["route"] = kyber(HYDX, int(claim["owner"]["amounts"][0]), deadline)
+
+    (epoch,), (n,) = calls(block, [(VOTER, "0xf8803bb6", []), (VOTER, "0x1f7b6d32", [])])
+    (power,) = calls(block, [(VE, "0xe0514aba", [TOKEN_ID, epoch + WEEK])])[0]
+    answers = [r[1] for r in calls(block, [(f, "0xfeaf968c", []) for _, f, _, _ in PRICED])]
+    pools = [addr(r[0]) for r in calls(block, [(VOTER, "0xac4afa38", [i]) for i in range(n)])]
+    gauges = [addr(r[0]) for r in calls(block, [(VOTER, "0xb9a09fd5", [p]) for p in pools])]
+    alive = [r[0] == 1 for r in calls(block, [(VOTER, "0x1703e5f9", [g]) for g in gauges])]
+    live = [(p, g) for p, g, a in zip(pools, gauges, alive) if a]
+    ext = [addr(r[0]) for r in calls(block, [(VOTER, "0xae21c4cb", [g]) for _, g in live])]
+    intl = [addr(r[0]) for r in calls(block, [(VOTER, "0xeae40f26", [g]) for _, g in live])]
+    weights = [r[0] for r in calls(block, [(VOTER, "0xa7cac846", [p]) for p, _ in live])]
+    usdc_ok = [r[0] == 1 for r in calls(block, [(b, "0xb5fd73f8", [USDC]) for b in ext])]
+
+    items = [
+        (k, b, t, mul, div, a)
+        for k in range(len(live))
+        for b in (ext[k], intl[k])
+        for (t, _, mul, div), a in zip(PRICED, answers)
+    ]
+    amounts = [r[1] for r in calls(block, [(b, "0x38174862", [t, epoch]) for _, b, t, _, _, _ in items])]
+    values, deposits = [0] * len(live), [[] for _ in live]
+    for (k, b, t, mul, div, a), x in zip(items, amounts):
+        values[k] += x * a * mul // div
+        if x:
+            deposits[k].append((b, t, x))
+
+    ranked = sorted(range(len(live)), key=lambda k: -values[k])
+    candidates = [k for k in ranked if values[k] > 0 and weights[k] > 0][:60]
+    chosen = candidates
+    for _ in range(50):
+        xs = waterfill([values[k] for k in chosen], [weights[k] for k in chosen], power)
+        gains = sorted(((values[k] * x / (weights[k] + x), k) for k, x in zip(chosen, xs) if x >= 1), reverse=True)
+        nxt = [k for _, k in gains[:MAX_POOLS]]
+        if set(nxt) == set(chosen):
+            break
+        chosen = nxt
+    xs = waterfill([values[k] for k in chosen], [weights[k] for k in chosen], power)
+    assert len(chosen) <= MAX_POOLS and all(x >= 1 for x in xs)
+    optimum = sum(values[k] * x / (weights[k] + x) for k, x in zip(chosen, xs))
+    ws = [int(x) for x in xs]
+    total = sum(ws)
+    score = sum(share(values[k], weights[k], w * power // total) for k, w in zip(chosen, ws))
+
+    gas = [k for k in range(len(live)) if usdc_ok[k]][:GAS_POOLS]
+    assert len(gas) == GAS_POOLS
+
+    fixture = {
+        "block": block,
+        "timestamp": timestamp,
+        "epoch": epoch,
+        "conduit": CONDUIT,
+        "power": str(power),
+        "answers": [str(a) for a in answers],
+        "market": {
+            "pools": [live[k][0] for k in chosen],
+            "weights": [str(w) for w in ws],
+            "values": [str(values[k]) for k in chosen],
+            "others": [str(weights[k]) for k in chosen],
+            "score": str(score),
+            "optimum": str(int(optimum)),
+            "bribes": [d[0] for k in chosen for d in deposits[k]],
+            "tokens": [d[1] for k in chosen for d in deposits[k]],
+            "amounts": [str(d[2]) for k in chosen for d in deposits[k]],
+        },
+        "gasPools": [live[k][0] for k in gas],
+        "stranger": claim["stranger"],
+        "owner": claim["owner"],
+        "generatedAt": int(time.time()),
+    }
+    with open(OUT, "w") as f:
+        json.dump(fixture, f, indent=2)
+        f.write("\n")
+    print(f"wrote {OUT} at block {block}: {len(chosen)} pools, score {score / 1e18:.2f} USD")
+
+
+if __name__ == "__main__":
+    main()

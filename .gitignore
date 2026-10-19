@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 Léo de Souza
+# SPDX-License-Identifier: MIT
+
+out/
+cache/
+.env
+
+broadcast/*
+!broadcast/*/
+broadcast/*/*
+!broadcast/*/8453/
+broadcast/*/8453/*
+!broadcast/*/8453/run-latest.json
+__pycache__/
