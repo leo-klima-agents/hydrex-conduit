@@ -85,9 +85,10 @@ conduit first.
    it.
 
 `score`, `currentScore` and `poolValue` use exactly the numbers `vote` uses. Like `vote`, they revert with
-`EpochStale` until someone calls `update_period()` on the Hydrex minter at the start of an epoch, and with
-`NoVotingPower` if the conduit had no delegated votes when the epoch started. The Voter accepts one vote per block,
-and a vote costs up to about 9.7M gas.
+`EpochStale` until someone calls `update_period()` on the Hydrex minter at the start of an epoch, with
+`NoVotingPower` if the conduit had no delegated votes when the epoch started, and with `SequencerDown` while the
+sequencer is down or in the hour after it comes back. The Voter accepts one vote per block, and a vote costs up to
+about 9.7M gas.
 
 ### Claiming rewards
 
@@ -135,7 +136,18 @@ Not deployed yet.
 | Fee | 1% (`FEE_BPS = 100`), fixed in the source |
 | Method | CREATE2 through `0x4e59b44847b379578588920cA78FbF26c0B4956C`, salt `keccak256("metadex.cafe/ImmutableVeTokenConduit/v1")` |
 
-The constructor arguments are constants in [`script/Deploy.s.sol`](script/Deploy.s.sol). To deploy and verify:
+The constructor arguments are constants in [`script/Deploy.s.sol`](script/Deploy.s.sol). The script stops unless
+it runs on Base and computes the address recorded in `verification/bytecode-hashes.json`, so a build that differs
+from the recorded one can't be deployed.
+
+To deploy:
+
+1. Install Foundry v1.8.5, the version CI uses, with `foundryup --install v1.8.5`. Another version can compile
+   different bytecode.
+2. Run `forge test` with `BASE_RPC_URL` set, then `script/check-verification.sh`.
+3. Do a dry run with `forge script script/Deploy.s.sol --rpc-url $BASE_RPC_URL`, and check that it logs the address
+   in the table above.
+4. Deploy, then verify the contract on Basescan and Sourcify:
 
 ```
 forge script script/Deploy.s.sol --rpc-url $BASE_RPC_URL --broadcast --ledger

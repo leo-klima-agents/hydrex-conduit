@@ -46,9 +46,14 @@ contract Deploy is Script {
     }
 
     function run() external returns (address deployed) {
+        require(block.chainid == 8453, "not Base");
         require(CREATE2_FACTORY.code.length != 0, "CREATE2 deployer not present");
         deployed = predict();
         console.log("ImmutableVeTokenConduit", deployed);
+        require(
+            deployed == vm.parseJsonAddress(vm.readFile("verification/bytecode-hashes.json"), ".deployment.address"),
+            "build differs from verification/bytecode-hashes.json"
+        );
         if (deployed.code.length != 0) {
             console.log("already deployed");
             return deployed;

@@ -16,6 +16,7 @@ interface IVoterExtra {
     function minter() external view returns (address);
     function weightsAt(address pool, uint256 time) external view returns (uint256);
     function permissionRegistry() external view returns (address);
+    function claimLogic() external view returns (address);
     function killGauge(address gauge) external;
 }
 
@@ -24,6 +25,7 @@ interface IPermissionsRegistry {
 }
 
 interface IVotingEscrowExtra {
+    function approvalLogic() external view returns (address);
     function setConduitApproval(address conduit, uint256 tokenId, bool approve) external;
     function getConduitApprovalConfig(address conduit)
         external
@@ -80,6 +82,8 @@ contract ForkTest is Test {
     address internal constant VE_IMPL = 0x0FC68cE53Be957a1AA779f553AD49f6068fFf231;
     address internal constant BRIBE_BEACON = 0x5aEb9f88B66Cd94f0cE50d139F9Fc257B65411C2;
     address internal constant BRIBE_IMPL = 0x6225a2B81F83a71c0595449A224Fc2385DfAA28D;
+    address internal constant CLAIM_LOGIC = 0x68Ed6a9fd3fe6DB26dEf56641c3B251278d8C21D;
+    address internal constant APPROVAL_LOGIC = 0x4B0BC0889EB524Dbae36d409fF733851E9B4f63D;
     address internal constant BRIBE_OWNER = 0x1aE3753d9b60743A89159CcFF8E251C60B560311;
     address internal constant MINTER = 0xA7D64625F45548a19B2A19e28E7546bb2839003E;
     address internal constant TREASURY = 0x450c72de8c0079B49AcedF294a13011bd09D125B;
@@ -94,6 +98,9 @@ contract ForkTest is Test {
     bytes32 internal constant VE_IMPL_CODEHASH = 0xe6b54672ba85711eac5516d6ce09fe96cabe9cc3764a178e5d2f33a6241c2b42;
     bytes32 internal constant BEACON_CODEHASH = 0xaaa27093ce9a3136b77cbcbfbee1c26a564b1d2742bc57f916f1cafe5e41f956;
     bytes32 internal constant BRIBE_IMPL_CODEHASH = 0x419b9ff2bbe35af4ba4fb135c4f4a2cc215e0c212196d0b0d5dbf7bb6f301055;
+    bytes32 internal constant CLAIM_LOGIC_CODEHASH = 0xff06fc1990ab09a31cf65c657fd15babd45a76ecf9a93f0b64d33e163e6cecf8;
+    bytes32 internal constant APPROVAL_LOGIC_CODEHASH =
+        0xd1fab3adcd045439b72359a675665cb9f9267b32aebb140df865fc723681a930;
     bytes32 internal constant TREASURY_CODEHASH = 0x4e381985ca68b3e5d27b4425fa581c19cf33146d3f887a3cfca96f55528ea46f;
 
     uint256 internal constant TOKEN_ID = 14_247;
@@ -198,6 +205,10 @@ contract ForkTest is Test {
         assertEq(VE_IMPL.codehash, VE_IMPL_CODEHASH);
         assertEq(BRIBE_BEACON.codehash, BEACON_CODEHASH);
         assertEq(BRIBE_IMPL.codehash, BRIBE_IMPL_CODEHASH);
+        assertEq(IVoterExtra(VOTER).claimLogic(), CLAIM_LOGIC);
+        assertEq(CLAIM_LOGIC.codehash, CLAIM_LOGIC_CODEHASH);
+        assertEq(IVotingEscrowExtra(VE).approvalLogic(), APPROVAL_LOGIC);
+        assertEq(APPROVAL_LOGIC.codehash, APPROVAL_LOGIC_CODEHASH);
 
         assertEq(IVoterExtra(VOTER).VOTE_DELAY(), 0);
         assertEq(IVoterExtra(VOTER).minter(), MINTER);

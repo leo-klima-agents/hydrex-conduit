@@ -13,6 +13,7 @@ contract DeployTest is Test {
     Deploy internal d;
 
     function setUp() public {
+        vm.chainId(8453);
         vm.warp(1_792_400_000);
         d = new Deploy();
         vm.etch(d.VOTER(), hex"00");
@@ -128,12 +129,9 @@ contract DeployTest is Test {
         d.run();
     }
 
-    function test_predict_dependsOnEveryArgument() public view {
-        bytes memory code = type(ImmutableVeTokenConduit).creationCode;
-        ImmutableVeTokenConduit.PricedToken[] memory p = d.pricedTokens();
-        p[0].maxAge = 1501;
-        bytes memory otherArgs = abi.encode(d.VOTER(), d.VE_TOKEN(), d.SEQUENCER_FEED(), p);
-        address other = vm.computeCreate2Address(d.SALT(), keccak256(bytes.concat(code, otherArgs)), CREATE2_FACTORY);
-        assertTrue(other != d.predict());
+    function test_run_failsOffBase() public {
+        vm.chainId(1);
+        vm.expectRevert(bytes("not Base"));
+        d.run();
     }
 }

@@ -49,6 +49,8 @@ jq -j '.sources["contracts/VoterV5/BribeV2.sol"].content' $B > test/upstream/hyd
 | Voter implementation (ERC-1967 slot) | `0x9CB9fc7D128F89CBD43Bbfd89dBAb05D1FA17233` | `0x42618eac51788e20459a854690666979bd13bbe185e3323bd6d7dd59ee8a31b0` |
 | VotingEscrow proxy | `0x25B2ED7149fb8A05f6eF9407d9c8F878f59cd1e1` | `0x96c3cd33e65424eb56bec90a4fb2ab41c16085b1afc0dcb37dcd412b666fb2d6` |
 | VotingEscrow implementation (ERC-1967 slot) | `0x0FC68cE53Be957a1AA779f553AD49f6068fFf231` | `0xe6b54672ba85711eac5516d6ce09fe96cabe9cc3764a178e5d2f33a6241c2b42` |
+| Voter claim logic (`claimLogic()`) | `0x68Ed6a9fd3fe6DB26dEf56641c3B251278d8C21D` | `0xff06fc1990ab09a31cf65c657fd15babd45a76ecf9a93f0b64d33e163e6cecf8` |
+| VotingEscrow approval logic (`approvalLogic()`) | `0x4B0BC0889EB524Dbae36d409fF733851E9B4f63D` | `0xd1fab3adcd045439b72359a675665cb9f9267b32aebb140df865fc723681a930` |
 | Bribe beacon | `0x5aeb9f88b66cd94f0ce50d139f9fc257b65411c2` | `0xaaa27093ce9a3136b77cbcbfbee1c26a564b1d2742bc57f916f1cafe5e41f956` |
 | Bribe implementation (`implementation()`) | `0x6225a2b81f83a71c0595449a224fc2385dfaa28d` | `0x419b9ff2bbe35af4ba4fb135c4f4a2cc215e0c212196d0b0d5dbf7bb6f301055` |
 | Bribe owner and bribe factory owner | `0x1aE3753d9b60743A89159CcFF8E251C60B560311` | |
