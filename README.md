@@ -6,7 +6,8 @@ least $1 more in bribes. Anyone can also claim a delegator's rewards through it:
 owner and sends a 1% fee to a fixed treasury.
 
 The contract has no owner, no settings and no upgrade path. All of it is in
-[`src/ImmutableVeTokenConduit.sol`](src/ImmutableVeTokenConduit.sol).
+[`src/ImmutableVeTokenConduit.sol`](src/ImmutableVeTokenConduit.sol), deployed on Base at
+[`0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B`](https://basescan.org/address/0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B).
 
 ## How it works
 
@@ -64,9 +65,10 @@ the veNFT across owners, and each event names the owner at the time.
 
 ## For veNFT holders
 
-To opt in, call `setConduitApproval(conduit, tokenId, true)` on the Hydrex VotingEscrow. This delegates your veNFT's
-votes to the conduit from the next epoch and lets the conduit claim your rewards. Call it with `false` to opt out.
-Transferring the veNFT clears the claim approval, so a new owner has to opt in again.
+To opt in, call `setConduitApproval(0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B, tokenId, true)` on the Hydrex
+VotingEscrow. This delegates your veNFT's votes to the conduit from the next epoch and lets the conduit claim your
+rewards. Call it with `false` to opt out. Transferring the veNFT clears the claim approval, so a new owner has to opt
+in again.
 
 While you're opted in, anyone can claim your rewards through the conduit at any time, and you pay 1% of each claim.
 You can still claim directly from the Voter without the fee, as long as nobody has claimed those rewards through the
@@ -122,7 +124,10 @@ address: it makes the whole claim revert.
 
 ## Deployment
 
-Not deployed yet.
+Deployed on 2026-10-19 in block 52,831,269, by transaction
+[`0x3fb98ef1…4c00`](https://basescan.org/tx/0x3fb98ef128fcda6d9a59ac2d6b293b4ae2ccdb6e1c634d53651a0761867c4d00).
+The source is verified on
+[Sourcify](https://repo.sourcify.dev/8453/0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B) as an exact match.
 
 | | |
 |---|---|
@@ -136,29 +141,16 @@ Not deployed yet.
 | Fee | 1% (`FEE_BPS = 100`), fixed in the source |
 | Method | CREATE2 through `0x4e59b44847b379578588920cA78FbF26c0B4956C`, salt `keccak256("metadex.cafe/ImmutableVeTokenConduit/v1")` |
 
-The constructor arguments are constants in [`script/Deploy.s.sol`](script/Deploy.s.sol). The script stops unless
-it runs on Base and computes the address recorded in `verification/bytecode-hashes.json`, so a build that differs
-from the recorded one can't be deployed.
+The constructor arguments are constants in [`script/Deploy.s.sol`](script/Deploy.s.sol), and
+`broadcast/Deploy.s.sol/8453/run-latest.json` records the deployment.
 
-To deploy:
-
-1. Install Foundry v1.8.5, the version CI uses, with `foundryup --install v1.8.5`. Another version can compile
-   different bytecode.
-2. Run `forge test` with `BASE_RPC_URL` set, then `script/check-verification.sh`.
-3. Do a dry run with `forge script script/Deploy.s.sol --rpc-url $BASE_RPC_URL`, and check that it logs the address
-   in the table above.
-4. Deploy, then verify the contract on Basescan and Sourcify:
+To check that the deployed contract is this repository's code, compare its code hash with the one recorded in
+`verification/bytecode-hashes.json`, which `script/check-verification.sh` checks against a build of this repository:
 
 ```
-forge script script/Deploy.s.sol --rpc-url $BASE_RPC_URL --broadcast --ledger
-ARGS=$(jq -j .deployment.constructorArgs verification/bytecode-hashes.json)
-forge verify-contract <address> src/ImmutableVeTokenConduit.sol:ImmutableVeTokenConduit --chain base \
-  --constructor-args $ARGS --license-type MIT --watch
-forge verify-contract <address> src/ImmutableVeTokenConduit.sol:ImmutableVeTokenConduit --chain base \
-  --verifier sourcify
+cast keccak $(cast code 0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B --rpc-url $BASE_RPC_URL)
+jq -j .deployment.runtimeKeccak verification/bytecode-hashes.json
 ```
-
-Keep `broadcast/Deploy.s.sol/8453/run-latest.json` after deploying.
 
 ## Development
 
