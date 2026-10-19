@@ -144,6 +144,20 @@ contract VoteTest is ConduitTestBase {
         conduit.vote(pools, weights);
     }
 
+    function test_vote_killedGaugeInForceStillCounts() public {
+        address a = _pool(100, 0);
+        (address[] memory pools, uint256[] memory weights) = _one(a);
+        conduit.vote(pools, weights);
+        voter.killGauge(voter.gauges(a));
+        _next();
+        (pools, weights) = _one(_pool(100, 0));
+        vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.NotBetter.selector, 100e18, 100e18));
+        conduit.vote(pools, weights);
+        (pools, weights) = _one(_pool(101, 0));
+        (uint256 oldScore,) = conduit.vote(pools, weights);
+        assertEq(oldScore, 100e18);
+    }
+
     function test_vote_revertsOnLengthMismatch() public {
         (address[] memory pools,) = _two(_pool(100, 0), _pool(100, 0), 1, 1);
         vm.expectRevert(ImmutableVeTokenConduit.LengthMismatch.selector);

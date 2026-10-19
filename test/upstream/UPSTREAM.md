@@ -90,8 +90,10 @@ logic are separate contracts that the Voter and the VotingEscrow `delegatecall`.
    previous vote and withdraws from both of its bribes (lines 635-666). The cost of a vote grows with the size of the
    one it replaces. Last epoch's `votes` stay in storage until then, but only this epoch's are in `weights`
    (lines 640, 650, 1024-1027).
-5. **Killed gauges.** `killGauge` zeroes the pool's weight for the epoch (`VoterV5.sol` lines 593-594) and leaves
-   `votes` as they are.
+5. **Killed gauges.** `killGauge` zeroes the pool's weight for the epoch (`VoterV5.sol` lines 590-594) and leaves
+   `votes` and the bribes' deposits as they are. Bribes pay each epoch by their own deposits
+   ([`BribeV2.sol`](hydrex/bribe/BribeV2.sol#L242-L284)), so voters keep earning a killed pool's bribes for that
+   epoch until `_reset` withdraws them, which it does even for a killed gauge (`VoterV5.sol` lines 657-658).
 6. **Deposits.** `notifyRewardAmount` credits the current epoch and has no withdrawal for the depositor
    ([`BribeV2.sol`](hydrex/bribe/BribeV2.sol#L357-L377)).
 7. **Recovery.** `recoverERC20AndUpdateData` and `emergencyRecoverERC20` are `onlyAllowed`: the bribe's owner or its
@@ -138,6 +140,7 @@ logic are separate contracts that the Voter and the VotingEscrow `delegatecall`.
 | `setConduitApprovalConfig(uint8[],string)` | `0x7c3a328f` | `IVotingEscrowV2_Logic.sol` |
 | `ownerOf(uint256)` | `0x6352211e` | ERC-721 |
 | `rewardData(address,uint256)` | `0x38174862` | `BribeV2.sol`, a public mapping of `Reward` |
+| `totalSupplyAt(uint256)` | `0x981b24d0` | `BribeV2.sol` |
 | `balanceOf(address)` | `0x70a08231` | ERC-20 |
 | `transfer(address,uint256)` | `0xa9059cbb` | ERC-20 |
 | `decimals()` | `0x313ce567` | ERC-20, Chainlink |

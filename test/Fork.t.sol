@@ -15,6 +15,12 @@ interface IVoterExtra {
     function VOTE_DELAY() external view returns (uint256);
     function minter() external view returns (address);
     function weightsAt(address pool, uint256 time) external view returns (uint256);
+    function permissionRegistry() external view returns (address);
+    function killGauge(address gauge) external;
+}
+
+interface IPermissionsRegistry {
+    function emergencyCouncil() external view returns (address);
 }
 
 interface IVotingEscrowExtra {
@@ -361,6 +367,37 @@ contract ForkTest is Test {
         assertLt(used + 21_000 + calldataGas, 14_000_000);
         assertEq(IVoter(VOTER).poolVote(address(conduit), 0), proposal[0]);
         assertEq(IVoter(VOTER).votes(address(conduit), current[0]), 0);
+    }
+
+    function test_vote_killedGaugeInForceStillCounts() public {
+        _deploy();
+        _optIn();
+        uint256 epoch = _nextEpoch();
+        address[] memory candidates = fx.readAddressArray(".gasPools");
+        address[] memory pools = new address[](1);
+        uint256[] memory weights = new uint256[](1);
+        pools[0] = candidates[0];
+        weights[0] = 1;
+        _notify(_externalBribe(candidates[0]), USDC, 100e6);
+        _notify(_externalBribe(candidates[1]), USDC, 100e6);
+        vm.prank(stranger);
+        (, uint256 score) = conduit.vote(pools, weights);
+
+        address gauge = IVoter(VOTER).gauges(candidates[0]);
+        vm.prank(IPermissionsRegistry(IVoterExtra(VOTER).permissionRegistry()).emergencyCouncil());
+        IVoterExtra(VOTER).killGauge(gauge);
+        assertFalse(IVoter(VOTER).isAlive(gauge));
+        assertEq(IVoter(VOTER).weights(candidates[0]), 0);
+        assertEq(
+            IBribe(_externalBribe(candidates[0])).totalSupplyAt(epoch),
+            IVoter(VOTER).votes(address(conduit), candidates[0])
+        );
+
+        _next();
+        assertEq(conduit.currentScore(), score);
+        pools[0] = candidates[1];
+        vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.NotBetter.selector, score, score));
+        conduit.vote(pools, weights);
     }
 
     function _claimArgs()

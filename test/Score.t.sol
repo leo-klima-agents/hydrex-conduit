@@ -139,7 +139,7 @@ contract ScoreTest is ConduitTestBase {
         assertEq(conduit.poolValue(pool), 5e18);
     }
 
-    function test_poolValue_deadGaugeCountsZero() public {
+    function test_poolValue_deadGaugeWithoutVotesCountsZero() public {
         address pool = _pool(1000, 0);
         assertEq(conduit.poolValue(pool), 1000e18);
         voter.killGauge(voter.gauges(pool));
@@ -151,14 +151,17 @@ contract ScoreTest is ConduitTestBase {
         assertEq(conduit.currentScore(), 0);
     }
 
-    function test_currentScore_deadGaugeCountsZero() public {
-        address a = _pool(100, 0);
+    function test_currentScore_killedGaugeKeepsItsBribes() public {
+        address a = _pool(100, POWER);
         address b = _pool(50, 0);
         (address[] memory pools, uint256[] memory weights) = _two(a, b, 1, 1);
         conduit.vote(pools, weights);
-        assertEq(conduit.currentScore(), 150e18);
+        uint256 score = Reference.share(100e18, POWER, POWER / 2) + 50e18;
+        assertEq(conduit.currentScore(), score);
         voter.killGauge(voter.gauges(a));
-        assertEq(conduit.currentScore(), 50e18);
+        assertEq(voter.weights(a), 0);
+        assertEq(conduit.currentScore(), score);
+        assertEq(conduit.poolValue(a), 100e18);
     }
 
     function test_ownVotes_subtractedOnlyWhenVoted() public {

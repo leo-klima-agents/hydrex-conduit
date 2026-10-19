@@ -207,7 +207,7 @@ contract ImmutableVeTokenConduit {
         uint256 n = IVoter(voter).poolVoteLength(address(this));
         for (uint256 i; i < n; ++i) {
             Pool memory p = _pool(ctx, IVoter(voter).poolVote(address(this), i));
-            if (p.alive) s += _share(p.value, p.others, p.own);
+            s += _share(p.value, p.others, p.own);
         }
     }
 
@@ -240,10 +240,11 @@ contract ImmutableVeTokenConduit {
         IVoter v = IVoter(voter);
         address gauge = v.gauges(pool);
         p.alive = v.isAlive(gauge);
-        if (p.alive) {
-            p.value = _bribeValue(ctx, v.external_bribes(gauge)) + _bribeValue(ctx, v.internal_bribes(gauge));
-            if (ctx.voted) p.own = v.votes(address(this), pool);
-            p.others = v.weights(pool) - p.own;
+        if (ctx.voted) p.own = v.votes(address(this), pool);
+        if (p.alive || p.own != 0) {
+            address bribe = v.external_bribes(gauge);
+            p.value = _bribeValue(ctx, bribe) + _bribeValue(ctx, v.internal_bribes(gauge));
+            p.others = (p.alive ? v.weights(pool) : IBribe(bribe).totalSupplyAt(ctx.epoch)) - p.own;
         }
     }
 

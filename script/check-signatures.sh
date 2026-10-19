@@ -82,6 +82,7 @@ check IVoter.sol claimFeesToRecipientByTokenId voter/IVoterV5_ClaimLogic.sol
 check IVotingEscrow.sol getPastVotes votingescrow/IVotes.sol
 check IVotingEscrow.sol setConduitApprovalConfig votingescrow/IVotingEscrowV2_Logic.sol
 check IBribe.sol rewardData mapping
+check IBribe.sol totalSupplyAt bribe/BribeV2.sol
 
 declared=$(grep -ohE 'function [A-Za-z_]+\(' "$I/IVoter.sol" "$I/IVotingEscrow.sol" "$I/IBribe.sol" | sed -E 's/function |\(//g' | sort)
 unchecked=$(comm -23 <(echo "$declared") <(printf '%s\n' "${checked[@]}" | sort) | grep -vx ownerOf || true)

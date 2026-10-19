@@ -175,9 +175,7 @@ contract ClaimTest is ConduitTestBase {
     function _reentries() internal returns (bytes[2] memory inner) {
         (address[] memory pools, uint256[] memory weights) = _one(_pool(100, 0));
         inner = [
-            abi.encodeCall(
-                ImmutableVeTokenConduit.claim, (TOKEN_ID, new address[](0), new address[](0), new address[](0))
-            ),
+            abi.encodeCall(ImmutableVeTokenConduit.claim, (TOKEN_ID, new address[](0), _bribes(), new address[](0))),
             abi.encodeCall(ImmutableVeTokenConduit.vote, (pools, weights))
         ];
     }

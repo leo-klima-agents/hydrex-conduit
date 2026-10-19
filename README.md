@@ -25,12 +25,14 @@ For each pool:
 - **B** is the USD value of the pool's bribes for this epoch: `rewardData(token, epoch).rewardsPerEpoch` on both the
   external and the internal bribe, for each whitelisted token, at its Chainlink price.
 - **V** is the other voters' votes: the pool's weight this epoch, less the conduit's own votes if it has voted this
-  epoch.
+  epoch. For a pool whose gauge was killed after the conduit voted for it, the Voter's weight is zero, so V is the
+  bribe's own deposits this epoch, less the conduit's.
 - **x** is the conduit's votes on the pool, rounded as the Voter rounds them: `weight × power / Σ weights`, where
   `power` is the conduit's voting power at the start of the epoch.
 
-A pool whose gauge is dead counts zero, and a proposal that includes one reverts, because the Voter would silently
-skip it. Votes do not carry over between epochs, so the first proposal of an epoch competes against a score of zero.
+A proposal that includes a pool whose gauge is dead reverts, because the Voter would silently skip it. A gauge killed
+after the conduit voted for it still pays the conduit's share of its bribes for the epoch, until the conduit's next
+vote withdraws it, so the vote in force keeps counting it. Votes do not carry over between epochs, so the first proposal of an epoch competes against a score of zero.
 A proposal has between 1 and 20 pools (`MAX_POOLS`), with no duplicates and no zero weight.
 
 `score`, `currentScore` and `poolValue` expose the same valuation as views, so a proposer can compute the best
@@ -105,8 +107,9 @@ Any funded address can propose or claim.
   Then compute the allocation that maximises the score over at most 20 pools: the optimum gives pool `i` about
   `sqrt(B_i × V_i / λ) − V_i` votes, with `λ` set so that the votes add up to the conduit's power. Check it with
   `score(pools, weights)` and an `eth_call` to `vote`, then send it. The Voter takes one vote per block.
-- **Claiming.** For an opted-in veNFT, find the fee and bribe contracts whose `earned(tokenId, token)` is positive,
-  and pass them with the tokens to `claim`.
+- **Claiming.** For an opted-in veNFT, find the fee and bribe contracts whose `earned(tokenId, token)` is positive.
+  Claim one token at a time, passing only the contracts that earned it: `claim` asks every contract for every token,
+  and a pair with nothing to claim can cost as much as one with rewards, since a bribe looks back up to 50 epochs.
 
 ## Deployment
 
@@ -123,7 +126,7 @@ Not deployed yet.
 | `FEE_BPS` | `100`, in the source |
 | Method | CREATE2 through the default deployer `0x4e59b44847b379578588920cA78FbF26c0B4956C` |
 | Salt | `keccak256("metadex.cafe/ImmutableVeTokenConduit/v1")` |
-| Address | `0x853d96D7D72FaF4e0DbFb372f746cC2cd2c30A05` |
+| Address | `0xa5c4128AF10A40AE2DE655AFC01556FcE181528E` |
 
 Every constructor argument is a constant in `script/Deploy.s.sol`. The treasury and the fee are constants in the
 source, so they are part of the bytecode hash and the address. The constructor takes one to four priced tokens,

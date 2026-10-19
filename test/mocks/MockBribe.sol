@@ -17,6 +17,8 @@ contract MockBribe {
     address public immutable owner;
     mapping(address => mapping(uint256 => uint256)) public rewardsPerEpoch;
     mapping(uint256 => mapping(address => uint256)) public earned;
+    mapping(uint256 => uint256) public totalSupplyAt;
+    mapping(address => mapping(uint256 => uint256)) public balanceOfOwnerAt;
 
     constructor(address voter_, address owner_) {
         voter = voter_;
@@ -57,11 +59,19 @@ contract MockBribe {
         }
     }
 
-    function deposit(uint256, address) external view {
+    function deposit(uint256 amount, address user) external {
         require(msg.sender == voter);
+        uint256 epoch = IEpoch(voter)._epochTimestamp();
+        totalSupplyAt[epoch] += amount;
+        balanceOfOwnerAt[user][epoch] += amount;
     }
 
-    function withdraw(uint256, address) external view {
+    function withdraw(uint256 amount, address user) external {
         require(msg.sender == voter);
+        uint256 epoch = IEpoch(voter)._epochTimestamp();
+        if (amount <= balanceOfOwnerAt[user][epoch]) {
+            totalSupplyAt[epoch] -= amount;
+            balanceOfOwnerAt[user][epoch] -= amount;
+        }
     }
 }

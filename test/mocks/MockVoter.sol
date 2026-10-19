@@ -58,6 +58,8 @@ contract MockVoter {
 
     function setOthers(address pool, uint256 weight) external {
         weightsPerEpoch[epoch][pool] += weight;
+        MockBribe(internal_bribes[gauges[pool]]).deposit(weight, address(0));
+        MockBribe(external_bribes[gauges[pool]]).deposit(weight, address(0));
     }
 
     function weights(address pool) external view returns (uint256) {

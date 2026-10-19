@@ -6,4 +6,5 @@ interface IBribe {
         external
         view
         returns (uint256 periodFinish, uint256 rewardsPerEpoch, uint256 lastUpdateTime);
+    function totalSupplyAt(uint256 timestamp) external view returns (uint256);
 }
