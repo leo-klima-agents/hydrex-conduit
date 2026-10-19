@@ -1,9 +1,9 @@
-// SPDX-FileCopyrightText: 2026 Léo de Souza
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.37;
 
 import {ImmutableVeTokenConduit} from "../src/ImmutableVeTokenConduit.sol";
 import {MockBribe} from "./mocks/MockBribe.sol";
+import {IVoter} from "../src/interfaces/IVoter.sol";
 import {ConduitTestBase} from "./utils/ConduitTestBase.sol";
 import {Reference} from "./utils/Reference.sol";
 
@@ -188,6 +188,8 @@ contract ScoreTest is ConduitTestBase {
         (pools, weights) = _two(b, a, 3, 1);
         uint256 expected = Reference.share(300e18, POWER, POWER * 3 / 4) + Reference.share(100e18, POWER, POWER / 4);
         assertEq(conduit.score(pools, weights), expected);
+        vm.expectCall(address(voter), abi.encodeCall(IVoter.gauges, (a)), 1);
+        vm.expectCall(address(voter), abi.encodeCall(IVoter.gauges, (b)), 1);
         (uint256 oldScore, uint256 newScore) = conduit.vote(pools, weights);
         assertEq(oldScore, Reference.share(100e18, POWER, POWER / 2) + Reference.share(300e18, POWER, POWER / 2));
         assertEq(newScore, expected);

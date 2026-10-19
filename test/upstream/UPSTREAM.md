@@ -1,8 +1,3 @@
-<!--
-SPDX-FileCopyrightText: 2026 Léo de Souza
-SPDX-License-Identifier: MIT
--->
-
 # Upstream pins
 
 Byte-identical copies of the Hydrex files `src/interfaces/` is checked against. Nothing in `src/` imports them and
@@ -28,7 +23,7 @@ has the same signature here, and `test/Selectors.t.sol` pins every selector.
 
 Sourcify has the VotingEscrow implementation as a "match", not an "exact match": the bytecode matches but the
 metadata hash differs, so comments in its sources may differ from what was compiled. The vendored files are fetched
-from Sourcify with:
+from Sourcify with the commands below, and `SHA256SUMS` holds their hashes:
 
 ```
 for a in 0x9CB9fc7D128F89CBD43Bbfd89dBAb05D1FA17233 0x0FC68cE53Be957a1AA779f553AD49f6068fFf231 0x6225a2b81f83a71c0595449a224fc2385dfaa28d; do
@@ -42,15 +37,6 @@ jq -j '.sources["contracts/VoterV5/VotingEscrow/IVotingEscrowV2_Logic.sol"].cont
 jq -j '.sources["contracts/VoterV5/VotingEscrow/interfaces/IVotes.sol"].content' $E > test/upstream/hydrex/votingescrow/IVotes.sol
 jq -j '.sources["contracts/VoterV5/BribeV2.sol"].content' $B > test/upstream/hydrex/bribe/BribeV2.sol
 (cd test/upstream && sha256sum -c SHA256SUMS)
-```
-
-```
-d8ddaa01716d83df1ca3324c5460cb917145acc0d1457e373c4d19fad184159e  hydrex/voter/IVoterV5_Logic.sol
-920a6e65ca45c66ad9ad3226c32fd5ac77615a53f43e6424dcc094b3acd318a6  hydrex/voter/IVoterV5_Storage.sol
-302f8ab44bcdad2f39cdb55b19acc92a9c8d934a52a75f845ac9186d6b362e48  hydrex/voter/IVoterV5_ClaimLogic.sol
-73f3fb32b42cbf7631548d14bb84a73839add4a4fb93bcedcca90997a1cbf856  hydrex/votingescrow/IVotingEscrowV2_Logic.sol
-0bf07beade5ba8fe015426b2598ecb26ade00540784f3de6c8c725e6fe13b963  hydrex/votingescrow/IVotes.sol
-7d8d189a81a804ffe5589a163f228429f359860c011515942955b072e522317c  hydrex/bribe/BribeV2.sol
 ```
 
 ## Addresses
@@ -68,15 +54,6 @@ d8ddaa01716d83df1ca3324c5460cb917145acc0d1457e373c4d19fad184159e  hydrex/voter/I
 | Bribe owner and bribe factory owner | `0x1aE3753d9b60743A89159CcFF8E251C60B560311` | |
 | Minter proxy | `0xA7D64625F45548a19B2A19e28E7546bb2839003E` | |
 | `TREASURY`, a Safe 1.5.0 proxy (2 of 3) | `0x450c72de8c0079B49AcedF294a13011bd09D125B` | `0x4e381985ca68b3e5d27b4425fa581c19cf33146d3f887a3cfca96f55528ea46f` |
-
-## Constants
-
-`script/check-verification.sh` checks these against `src/ImmutableVeTokenConduit.sol`.
-
-| Constant | Value |
-|---|---|
-| `TREASURY` | `0x450c72de8c0079B49AcedF294a13011bd09D125B` |
-| `FEE_BPS` | `100` |
 
 ## Chainlink feeds
 

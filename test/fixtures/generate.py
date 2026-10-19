@@ -1,17 +1,9 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: 2026 Léo de Souza
-# SPDX-License-Identifier: MIT
-"""Writes test/fixtures/fork.json from Base at one block.
-
-Usage: BASE_RPC_URL=<archive rpc> test/fixtures/generate.py [block]
-
-It records what test/Fork.t.sol replays: the epoch's whitelisted rewards and other voters' weights on the best
-pools, the water-filling allocation over them and its expected score, and token 14247's claimable rewards.
-"""
-
+import functools
 import json
 import math
 import os
+import subprocess
 import sys
 import time
 import urllib.request
@@ -29,7 +21,6 @@ GAS_POOLS = 40
 USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 WETH = "0x4200000000000000000000000000000000000006"
 HYDX = "0x00000e7efa313F4E11Bfff432471eD9423AC6B30"
-# token, feed, mul, div: amount * answer * mul // div is 18-decimal USD, as in the contract.
 PRICED = [
     (WETH, "0x50015f8b17fb2C290Dde41fDc246ed0dcEE93a8b", 1, 10**8),
     ("0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf", "0x07DA0E54543a844a80ABE69c8A12F22B3aA59f9D", 100, 1),
@@ -59,10 +50,19 @@ def word(x):
     return (x[2:].lower() if isinstance(x, str) else format(x, "x")).rjust(64, "0")
 
 
+@functools.cache
+def selector(signature):
+    return subprocess.check_output(["cast", "sig", signature], text=True).strip()
+
+
 def calls(block, items):
-    """items: (to, selector, args) -> list of 32-byte words per result."""
     tag = hex(block)
-    res = rpc([("eth_call", [{"to": to, "data": sel + "".join(word(a) for a in args)}, tag]) for to, sel, args in items])
+    res = rpc(
+        [
+            ("eth_call", [{"to": to, "data": selector(sig) + "".join(word(a) for a in args)}, tag])
+            for to, sig, args in items
+        ]
+    )
     return [[int(r[2 + 64 * k : 2 + 64 * (k + 1)], 16) for k in range((len(r) - 2) // 64)] for r in res]
 
 
@@ -76,7 +76,6 @@ def share(b, v, x):
 
 
 def waterfill(values, others, power):
-    """Continuous optimum of sum b x / (v + x) with sum x = power, over pools with v > 0."""
     lo, hi = 0.0, max(b / v for b, v in zip(values, others))
     for _ in range(200):
         lam = (lo + hi) / 2
@@ -88,15 +87,20 @@ def waterfill(values, others, power):
 def main():
     latest = int(rpc([("eth_blockNumber", [])])[0], 16)
     block = int(sys.argv[1]) if len(sys.argv) > 1 else latest - 2
-    timestamp = int(rpc([("eth_getBlockByNumber", [hex(block), False])])[0]["timestamp"], 16)
 
-    (klima_n,) = calls(block, [(VOTER, "0x8daeaa5a", [KLIMA_CONDUIT])])[0]
-    kpools = [addr(r[0]) for r in calls(block, [(VOTER, "0xc48f5af4", [KLIMA_CONDUIT, i]) for i in range(klima_n)])]
-    kg = [addr(r[0]) for r in calls(block, [(VOTER, "0xb9a09fd5", [p]) for p in kpools])]
-    kext = [addr(r[0]) for r in calls(block, [(VOTER, "0xae21c4cb", [g]) for g in kg])]
-    kint = [addr(r[0]) for r in calls(block, [(VOTER, "0xeae40f26", [g]) for g in kg])]
+    (klima_n,) = calls(block, [(VOTER, "poolVoteLength(address)", [KLIMA_CONDUIT])])[0]
+    kpools = [
+        addr(r[0])
+        for r in calls(block, [(VOTER, "poolVote(address,uint256)", [KLIMA_CONDUIT, i]) for i in range(klima_n)])
+    ]
+    kg = [addr(r[0]) for r in calls(block, [(VOTER, "gauges(address)", [p]) for p in kpools])]
+    kext = [addr(r[0]) for r in calls(block, [(VOTER, "external_bribes(address)", [g]) for g in kg])]
+    kint = [addr(r[0]) for r in calls(block, [(VOTER, "internal_bribes(address)", [g]) for g in kg])]
     tokens = [USDC, WETH, HYDX]
-    e = {t: [r[0] for r in calls(block, [(b, "0xe39c08fc", [TOKEN_ID, t]) for b in kext + kint])] for t in tokens}
+    e = {
+        t: [r[0] for r in calls(block, [(b, "earned(uint256,address)", [TOKEN_ID, t]) for b in kext + kint])]
+        for t in tokens
+    }
     claim = {
         "bribes": [b for i, b in enumerate(kext) if any(e[t][i] for t in tokens)],
         "fees": [b for i, b in enumerate(kint) if any(e[t][len(kext) + i] for t in tokens)],
@@ -104,17 +108,17 @@ def main():
         "amounts": [str(sum(e[t])) for t in tokens],
     }
 
-    (epoch,), (n,) = calls(block, [(VOTER, "0xf8803bb6", []), (VOTER, "0x1f7b6d32", [])])
-    (power,) = calls(block, [(VE, "0xe0514aba", [TOKEN_ID, epoch + WEEK])])[0]
-    answers = [r[1] for r in calls(block, [(f, "0xfeaf968c", []) for _, f, _, _ in PRICED])]
-    pools = [addr(r[0]) for r in calls(block, [(VOTER, "0xac4afa38", [i]) for i in range(n)])]
-    gauges = [addr(r[0]) for r in calls(block, [(VOTER, "0xb9a09fd5", [p]) for p in pools])]
-    alive = [r[0] == 1 for r in calls(block, [(VOTER, "0x1703e5f9", [g]) for g in gauges])]
+    (epoch,), (n,) = calls(block, [(VOTER, "_epochTimestamp()", []), (VOTER, "length()", [])])
+    (power,) = calls(block, [(VE, "balanceOfNFTAt(uint256,uint256)", [TOKEN_ID, epoch + WEEK])])[0]
+    answers = [r[1] for r in calls(block, [(f, "latestRoundData()", []) for _, f, _, _ in PRICED])]
+    pools = [addr(r[0]) for r in calls(block, [(VOTER, "pools(uint256)", [i]) for i in range(n)])]
+    gauges = [addr(r[0]) for r in calls(block, [(VOTER, "gauges(address)", [p]) for p in pools])]
+    alive = [r[0] == 1 for r in calls(block, [(VOTER, "isAlive(address)", [g]) for g in gauges])]
     live = [(p, g) for p, g, a in zip(pools, gauges, alive) if a]
-    ext = [addr(r[0]) for r in calls(block, [(VOTER, "0xae21c4cb", [g]) for _, g in live])]
-    intl = [addr(r[0]) for r in calls(block, [(VOTER, "0xeae40f26", [g]) for _, g in live])]
-    weights = [r[0] for r in calls(block, [(VOTER, "0xa7cac846", [p]) for p, _ in live])]
-    usdc_ok = [r[0] == 1 for r in calls(block, [(b, "0xb5fd73f8", [USDC]) for b in ext])]
+    ext = [addr(r[0]) for r in calls(block, [(VOTER, "external_bribes(address)", [g]) for _, g in live])]
+    intl = [addr(r[0]) for r in calls(block, [(VOTER, "internal_bribes(address)", [g]) for _, g in live])]
+    weights = [r[0] for r in calls(block, [(VOTER, "weights(address)", [p]) for p, _ in live])]
+    usdc_ok = [r[0] == 1 for r in calls(block, [(b, "isRewardToken(address)", [USDC]) for b in ext])]
 
     items = [
         (k, b, t, mul, div, a)
@@ -122,7 +126,9 @@ def main():
         for b in (ext[k], intl[k])
         for (t, _, mul, div), a in zip(PRICED, answers)
     ]
-    amounts = [r[1] for r in calls(block, [(b, "0x38174862", [t, epoch]) for _, b, t, _, _, _ in items])]
+    amounts = [
+        r[1] for r in calls(block, [(b, "rewardData(address,uint256)", [t, epoch]) for _, b, t, _, _, _ in items])
+    ]
     values, deposits = [0] * len(live), [[] for _ in live]
     for (k, b, t, mul, div, a), x in zip(items, amounts):
         values[k] += x * a * mul // div
@@ -151,7 +157,6 @@ def main():
 
     fixture = {
         "block": block,
-        "timestamp": timestamp,
         "epoch": epoch,
         "power": str(power),
         "answers": [str(a) for a in answers],

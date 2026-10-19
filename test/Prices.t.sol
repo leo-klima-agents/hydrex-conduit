@@ -1,4 +1,3 @@
-// SPDX-FileCopyrightText: 2026 Léo de Souza
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.37;
 
@@ -66,7 +65,7 @@ contract PricesTest is ConduitTestBase {
         assertApproxEqAbs(c.poolValue(q), amount * 3e18 / 10 ** tokenDecimals, 1);
     }
 
-    function test_vote_staleFeedCountsZero() public {
+    function test_poolValue_staleFeedCountsZero() public {
         ethFeed.set(ETH_USD, block.timestamp - 1500);
         assertEq(conduit.poolValue(pool), 2410e18);
         ethFeed.set(ETH_USD, block.timestamp - 1501);
@@ -77,7 +76,7 @@ contract PricesTest is ConduitTestBase {
         assertEq(conduit.poolValue(pool), 0);
     }
 
-    function test_vote_invalidFeedCountsZero() public {
+    function test_poolValue_invalidFeedCountsZero() public {
         ethFeed.set(0, block.timestamp);
         assertEq(conduit.poolValue(pool), 10e18);
         ethFeed.set(-1, block.timestamp);
@@ -100,12 +99,12 @@ contract PricesTest is ConduitTestBase {
 
     function test_sequencerDown_revertsVotes() public {
         sequencer.set(1, 0);
-        _assertSequencerBlocks(ImmutableVeTokenConduit.SequencerDown.selector);
+        _assertSequencerBlocks(abi.encodeWithSelector(ImmutableVeTokenConduit.SequencerDown.selector));
     }
 
     function test_sequencerGrace_revertsVotes() public {
         sequencer.setStartedAt(block.timestamp - 3600);
-        _assertSequencerBlocks(ImmutableVeTokenConduit.SequencerDown.selector);
+        _assertSequencerBlocks(abi.encodeWithSelector(ImmutableVeTokenConduit.SequencerDown.selector));
         sequencer.setStartedAt(block.timestamp - 3601);
         (address[] memory pools, uint256[] memory weights) = _one(pool);
         conduit.vote(pools, weights);
@@ -113,12 +112,11 @@ contract PricesTest is ConduitTestBase {
 
     function test_sequencerFeedReverting_revertsVotes() public {
         sequencer.setReverts(true);
-        _assertSequencerBlocks(bytes4(0));
+        _assertSequencerBlocks(bytes("feed reverts"));
     }
 
-    function _assertSequencerBlocks(bytes4 reason) internal {
+    function _assertSequencerBlocks(bytes memory err) internal {
         (address[] memory pools, uint256[] memory weights) = _one(pool);
-        bytes memory err = reason == bytes4(0) ? bytes("feed reverts") : abi.encodePacked(reason);
         vm.expectRevert(err);
         conduit.vote(pools, weights);
         vm.expectRevert(err);
@@ -129,7 +127,7 @@ contract PricesTest is ConduitTestBase {
         conduit.poolValue(pool);
     }
 
-    function test_claims_readNoFeeds() public {
+    function test_claim_readsNoFeeds() public {
         _earn(address(weth), 1e18);
         _earn(address(junk), 5e18);
         MockFeed[5] memory feeds = [ethFeed, btcFeed, usdcFeed, eurcFeed, sequencer];

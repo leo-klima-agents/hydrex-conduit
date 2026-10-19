@@ -1,8 +1,3 @@
-<!--
-SPDX-FileCopyrightText: 2026 Léo de Souza
-SPDX-License-Identifier: MIT
--->
-
 # hydrex-conduit
 
 `ImmutableVeTokenConduit` is a Hydrex conduit that nobody controls. veNFT holders delegate their votes to it. Anyone
@@ -13,8 +8,7 @@ fee in the same token, paid to a fixed treasury.
 There are no roles, no setters and no upgrade path. The treasury, the fee, the price feeds and the Hydrex contracts
 are fixed when the contract is deployed.
 
-The whole contract is [`src/ImmutableVeTokenConduit.sol`](src/ImmutableVeTokenConduit.sol). Its integration with
-Hydrex's Voter and VotingEscrow follows Hydrex's own `VeTokenConduit`; no code is copied from it.
+The whole contract is [`src/ImmutableVeTokenConduit.sol`](src/ImmutableVeTokenConduit.sol).
 
 ## How votes are verified
 
@@ -69,14 +63,14 @@ sequencer down, or within an hour of it coming back.
 `claim(tokenId, feeAddresses, bribeAddresses, tokens)` can be called by anyone, for any veNFT whose owner has opted in.
 It needs at least one fee or bribe contract, so the Voter always checks the opt-in, and refuses the claim otherwise.
 
-1. The conduit claims `tokens` from the given fee and bribe contracts to itself.
-2. For each token, it sends 1% of the amount claimed (`FEE_BPS = 100`, rounded down) to `TREASURY`, and the rest to
-   `ownerOf(tokenId)`. There is no recipient parameter, and the conduit holds nothing after the transaction.
+1. The conduit records its balance of each token, then claims `tokens` from the given fee and bribe contracts to
+   itself.
+2. For each token in turn, the amount claimed is the conduit's balance less the recorded one. The conduit sends 1% of
+   it (`FEE_BPS = 100`, rounded down) to `TREASURY`, and the rest to `ownerOf(tokenId)`. A token listed twice is paid
+   once. There is no recipient parameter, and none of the claimed tokens stay in the conduit.
 
 Nothing is swapped or priced, so any token can be claimed, by anyone, and claims read no feeds. The fee is the same
 whoever calls. `claim` returns the amounts claimed, so callers can simulate it first.
-
-The conduit works on balance changes. Tokens sent to it by mistake are neither paid out nor taken; they stay there.
 
 ## Trust model
 
@@ -84,9 +78,6 @@ The conduit works on balance changes. Tokens sent to it by mistake are neither p
 |---|---|---|
 | Anyone | propose a vote, accepted only if it scores at least $1 higher; claim any opted-in veNFT's rewards, paid to its owner less 1% | make the vote score worse; redirect rewards |
 | Treasury (`TREASURY`) | receive the fee | anything else |
-| Holder | claim any of their rewards through the conduit, or directly from the Voter without the fee | |
-
-Nobody can change the treasury, the fee or the whitelist.
 
 What remains trusted:
 
@@ -96,15 +87,11 @@ What remains trusted:
   `test/Fork.t.sol` checks on Base that nobody else can, directly or through the bribe factory, and
   `test/Vote.t.sol` plays out the attack.
 - **Chainlink**, for prices and the sequencer status, in votes only.
-- **Reward tokens.** A token that blocks transfers to the treasury or to an owner, as Circle can for USDC, cannot be
-  claimed through the conduit while it does.
 
 ## Opting in
 
 A holder opts in with `setConduitApproval(conduit, tokenId, true)` on the VotingEscrow. This delegates the veNFT's
-votes to the conduit and lets the conduit claim its rewards. From then on anyone can claim any of the holder's
-rewards through the conduit, at any time, and the holder pays the 1% fee on each such claim. The delegated votes
-count from the next epoch.
+votes to the conduit and lets the conduit claim its rewards. The delegated votes count from the next epoch.
 
 `setConduitApproval(conduit, tokenId, false)` undoes both. Transferring the veNFT clears the claim approval, so a new
 owner has to opt in again.
@@ -120,7 +107,6 @@ Any funded address can propose or claim.
   `score(pools, weights)` and an `eth_call` to `vote`, then send it. The Voter takes one vote per block.
 - **Claiming.** For an opted-in veNFT, find the fee and bribe contracts whose `earned(tokenId, token)` is positive,
   and pass them with the tokens to `claim`.
-- **Holders** can skip the conduit and its fee by claiming from the Voter themselves.
 
 ## Deployment
 
@@ -137,16 +123,16 @@ Not deployed yet.
 | `FEE_BPS` | `100`, in the source |
 | Method | CREATE2 through the default deployer `0x4e59b44847b379578588920cA78FbF26c0B4956C` |
 | Salt | `keccak256("metadex.cafe/ImmutableVeTokenConduit/v1")` |
-| Address | `0xA5d7010F77C8b9f035cF7d0159f335b44A186877` |
+| Address | `0xa73427710119e9e4575fe5573b2ae1bB7320C88c` |
 
 Every constructor argument is a constant in `script/Deploy.s.sol`. The treasury and the fee are constants in the
-source, so they are part of the bytecode hash and the address. The constructor checks that every feed answers and
-the sequencer is up, and registers the conduit with the VotingEscrow (`setConduitApprovalConfig([3, 5], "")`:
-claim-redirect approval and vote delegation).
+source, so they are part of the bytecode hash and the address. The constructor takes one to four priced tokens,
+checks that every feed answers and the sequencer is up, and registers the conduit with the VotingEscrow
+(`setConduitApprovalConfig([3, 5], "")`: claim-redirect approval and vote delegation).
 
 ```
 forge script script/Deploy.s.sol --rpc-url $BASE_RPC_URL --broadcast --ledger
-ARGS=$(jq -r .deployment.constructorArgs verification/bytecode-hashes.json)
+ARGS=$(jq -j .deployment.constructorArgs verification/bytecode-hashes.json)
 forge verify-contract <address> src/ImmutableVeTokenConduit.sol:ImmutableVeTokenConduit --chain base \
   --constructor-args $ARGS --license-type MIT --watch
 forge verify-contract <address> src/ImmutableVeTokenConduit.sol:ImmutableVeTokenConduit --chain base \
@@ -180,14 +166,13 @@ hashes on Base.
   epoch to vote, recreates the recorded epoch's bribes and other voters' weights, proposes the water-filling
   allocation computed off chain by [`test/fixtures/generate.py`](test/fixtures/generate.py), and checks that the
   score matches it exactly. The worst case, a 20-pool proposal replacing a different 20-pool vote, uses about 9.9M
-  gas, under the 14M the test allows and the 16.8M a Base transaction may use. CI runs it only when the
-  `BASE_RPC_URL` secret is set.
+  gas, under the 14M the test allows. CI runs it only when the `BASE_RPC_URL` secret is set.
+- `BASE_RPC_URL=<archive rpc> test/fixtures/generate.py [block]` rewrites the fixture. It needs `cast`.
 - Builds are reproducible; `verification/` holds the standard JSON input and bytecode hashes, checked in CI.
 - Compiler: solc 0.8.37, `prague`, optimizer 1,000,000 runs, via-IR, ipfs metadata.
 
 ## Known limitations
 
-- Only the four whitelisted tokens count in votes.
 - A token whose feed is stale or broken counts as zero in both the vote in force and the proposal. While that lasts,
   a proposal that moves votes away from that token's bribes can win even if it is worse in real terms. For WETH and
   cbBTC this takes more than 25 minutes without a Chainlink update. Reverting instead would stop votes for good if a
@@ -195,21 +180,19 @@ hashes on Base.
 - Anyone can claim any of an opted-in holder's rewards at any time, in any token they choose, and the holder pays
   1% of each.
 - A holder avoids the fee only by claiming directly from the Voter before someone claims through the conduit.
-- Rewards are paid in the tokens they were deposited in. Holders sell them themselves.
 - A token that takes a cut of every transfer is taxed twice on its way through the conduit.
-- A token that blocks transfers to the treasury or to the owner makes any claim that includes it revert. Leave it
-  out, or claim it directly.
+- A token that blocks transfers to the treasury or to the owner, as Circle can for USDC, makes any claim that
+  includes it revert. Leave it out, or claim it directly.
 - At most 20 pools per vote, so that every accepted vote can be replaced within one transaction.
-- The first proposal in the final block before an epoch ends takes the Voter's one vote for that block.
+- A vote accepted in an epoch's last block cannot be replaced: the Voter takes one vote per block.
 - Scores use the votes in place when a proposal is made. Other voters can change theirs afterwards, so the vote in
   force can become worse than another; anyone can then propose the better one.
 - Nothing can be changed. A new treasury, fee or feed means a new deployment, and holders opting in again.
-- If a feed is deprecated, its token counts as zero in votes. If the sequencer feed stops answering, votes stop;
-  claims still work.
+- If the sequencer feed stops answering, votes stop; claims still work.
 - Tokens sent to the conduit by mistake are stuck.
 - Bribe contracts only look 50 epochs past a veNFT's last claim, so after a long gap several claims may be needed.
 
 ## License
 
-MIT, REUSE compliant. The vendored Hydrex files are MIT and unmodified, with their copyright holder recorded in
-`REUSE.toml`.
+MIT, REUSE compliant. `REUSE.toml` records every file's copyright holder. The vendored Hydrex files are MIT and
+unmodified.

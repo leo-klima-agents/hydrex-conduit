@@ -1,4 +1,3 @@
-// SPDX-FileCopyrightText: 2026 Léo de Souza
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.37;
 
@@ -8,8 +7,6 @@ import {IERC20} from "./interfaces/IERC20.sol";
 import {IVoter} from "./interfaces/IVoter.sol";
 import {IVotingEscrow} from "./interfaces/IVotingEscrow.sol";
 
-/// @notice Votes with the veNFTs delegated to it for whichever allocation is expected to pay their holders most, and
-/// claims their rewards for their owners, less a fixed fee. Nothing can be changed after deployment.
 contract ImmutableVeTokenConduit {
     struct PricedToken {
         address token;
@@ -17,7 +14,6 @@ contract ImmutableVeTokenConduit {
         uint256 maxAge;
     }
 
-    /// @dev `amount * answer * mul / div` is the value of `amount` in 18-decimal USD.
     struct Oracle {
         address token;
         address feed;
@@ -49,7 +45,10 @@ contract ImmutableVeTokenConduit {
     uint256 public constant MAX_POOLS = 20;
     uint256 public constant MIN_GAIN = 1e18;
     uint256 public constant SEQUENCER_GRACE = 3600;
-    uint256 public constant WEEK = 604800;
+    uint256 private constant WEEK = 604800;
+    uint256 private constant MAX_PRICED_TOKENS = 4;
+    uint8 private constant CLAIM_REDIRECT_APPROVAL = 3;
+    uint8 private constant VOTING_DELEGATE = 5;
 
     address public immutable voter;
     address public immutable veToken;
@@ -77,8 +76,7 @@ contract ImmutableVeTokenConduit {
     );
 
     error ZeroAddress();
-    error NotAContract(address account);
-    error BadConfig();
+    error BadPricedTokenCount();
     error Duplicate(address account);
     error NoRewardContracts();
     error BadFeed(address feed);
@@ -108,11 +106,9 @@ contract ImmutableVeTokenConduit {
         sequencerFeed = sequencerFeed_;
 
         uint256 n = pricedTokens_.length;
-        if (n == 0 || n > 8) revert BadConfig();
+        if (n == 0 || n > MAX_PRICED_TOKENS) revert BadPricedTokenCount();
         for (uint256 i; i < n; ++i) {
             PricedToken memory p = pricedTokens_[i];
-            if (p.token == address(0) || p.feed == address(0)) revert ZeroAddress();
-            if (p.feed.code.length == 0) revert NotAContract(p.feed);
             for (uint256 j; j < i; ++j) {
                 if (pricedTokens_[j].token == p.token) revert Duplicate(p.token);
             }
@@ -125,8 +121,8 @@ contract ImmutableVeTokenConduit {
         _checkSequencer();
 
         uint8[] memory actions = new uint8[](2);
-        actions[0] = 3; // CLAIM_REDIRECT_APPROVAL
-        actions[1] = 5; // VOTING_DELEGATE
+        actions[0] = CLAIM_REDIRECT_APPROVAL;
+        actions[1] = VOTING_DELEGATE;
         IVotingEscrow(veToken_).setConduitApprovalConfig(actions, "");
     }
 
@@ -155,24 +151,17 @@ contract ImmutableVeTokenConduit {
         return _pool(_context(), pool).value;
     }
 
-    /// @notice Claims `tokens` for `tokenId` from the given fee and bribe contracts, and pays each to the veNFT's owner
-    /// less `FEE_BPS`, which goes to `TREASURY`.
     function claim(
         uint256 tokenId,
         address[] calldata feeAddresses,
         address[] calldata bribeAddresses,
         address[] calldata tokens
     ) external nonReentrant returns (uint256[] memory amounts) {
-        if (feeAddresses.length == 0 && bribeAddresses.length == 0) {
-            revert NoRewardContracts();
-        }
+        if (feeAddresses.length + bribeAddresses.length == 0) revert NoRewardContracts();
         address owner = IVotingEscrow(veToken).ownerOf(tokenId);
         uint256 n = tokens.length;
         amounts = new uint256[](n);
         for (uint256 i; i < n; ++i) {
-            for (uint256 j; j < i; ++j) {
-                if (tokens[j] == tokens[i]) revert Duplicate(tokens[i]);
-            }
             amounts[i] = IERC20(tokens[i]).balanceOf(address(this));
         }
 
@@ -189,12 +178,10 @@ contract ImmutableVeTokenConduit {
                 );
         }
 
-        for (uint256 i; i < n; ++i) {
-            amounts[i] = IERC20(tokens[i]).balanceOf(address(this)) - amounts[i];
-        }
         uint256[] memory fees = new uint256[](n);
         for (uint256 i; i < n; ++i) {
-            fees[i] = _fee(amounts[i], FEE_BPS);
+            amounts[i] = IERC20(tokens[i]).balanceOf(address(this)) - amounts[i];
+            fees[i] = amounts[i] * FEE_BPS / 10_000;
             if (fees[i] != 0) _transfer(tokens[i], TREASURY, fees[i]);
             if (amounts[i] != fees[i]) _transfer(tokens[i], owner, amounts[i] - fees[i]);
         }
@@ -269,20 +256,18 @@ contract ImmutableVeTokenConduit {
     function _bribeValue(Context memory ctx, address bribe) private view returns (uint256 usd) {
         for (uint256 i; i < ctx.oracles.length; ++i) {
             if (ctx.answers[i] == 0) continue;
-            (, uint256 amount,) = IBribe(bribe).rewardData(ctx.oracles[i].token, ctx.epoch);
             Oracle memory o = ctx.oracles[i];
+            (, uint256 amount,) = IBribe(bribe).rewardData(o.token, ctx.epoch);
             usd += amount * ctx.answers[i] * o.mul / o.div;
         }
     }
 
-    /// @dev floor(b * x / (others + x)) without overflowing b * x.
     function _share(uint256 b, uint256 others, uint256 x) private pure returns (uint256) {
         uint256 d = others + x;
         // forge-lint: disable-next-line(divide-before-multiply)
         return b / d * x + b % d * x / d;
     }
 
-    /// @dev The feed's answer, or 0 if the call fails or the answer is stale or not positive.
     function _answer(address feed, uint256 maxAge) private view returns (uint256) {
         (bool ok, bytes memory ret) = feed.staticcall(abi.encodeCall(IAggregatorV3.latestRoundData, ()));
         if (!ok || ret.length != 160) return 0;
@@ -310,9 +295,5 @@ contract ImmutableVeTokenConduit {
         if (!ok || (ret.length == 0 ? token.code.length == 0 : !abi.decode(ret, (bool)))) {
             revert TokenCallFailed(token);
         }
-    }
-
-    function _fee(uint256 amount, uint256 bps) internal pure returns (uint256) {
-        return amount * bps / 10_000;
     }
 }

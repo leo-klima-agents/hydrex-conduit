@@ -1,8 +1,6 @@
-// SPDX-FileCopyrightText: 2026 Léo de Souza
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.37;
 
-/// @notice The parts of Hydrex's VotingEscrow the conduit and the mock Voter use.
 contract MockVotingEscrow {
     mapping(uint256 => address) internal owners;
     mapping(uint256 => address) public claimRedirect;

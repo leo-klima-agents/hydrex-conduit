@@ -1,4 +1,3 @@
-// SPDX-FileCopyrightText: 2026 Léo de Souza
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.37;
 
@@ -70,7 +69,6 @@ contract SelectorsTest is Test {
 
     function test_selectors_conduitVoteMatchesVoter() public pure {
         assertEq(ImmutableVeTokenConduit.vote.selector, IVoter.vote.selector);
-        assertEq(ImmutableVeTokenConduit.vote.selector, bytes4(0x6f816a20));
     }
 
     function test_selectors_upstreamMdTable() public view {

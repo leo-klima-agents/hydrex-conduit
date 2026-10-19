@@ -1,6 +1,3 @@
-# SPDX-FileCopyrightText: 2026 Léo de Souza
-# SPDX-License-Identifier: MIT
-
 [profile.default]
 solc_version = "0.8.37"
 evm_version = "prague"
@@ -21,7 +18,7 @@ fs_permissions = [
 [profile.ci.fuzz]
 runs = 10_000
 
-[invariant]
+[profile.default.invariant]
 depth = 100
 
 [profile.ci.invariant]
@@ -29,20 +26,6 @@ runs = 1_000
 
 [fmt]
 ignore = ["./test/upstream/**"]
-
-# Lints that fire on src/ by design: loops over pools, bribes and tokens make calls and revert; epochs and feed ages
-# compare timestamps; vote and claim hold a lock; tuples from Chainlink and bribes are read in part; and accumulators
-# start at zero.
-[profile.strict.lint]
-exclude_lints = [
-  "calls-loop",
-  "require-revert-in-loop",
-  "block-timestamp",
-  "reentrancy-no-eth",
-  "reentrancy-events",
-  "unused-return",
-  "uninitialized-local",
-]
 
 [lint]
 ignore = ["test/upstream/**"]

@@ -1,4 +1,3 @@
-// SPDX-FileCopyrightText: 2026 Léo de Souza
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.37;
 
@@ -10,16 +9,6 @@ import {MockFeed} from "../mocks/MockFeed.sol";
 import {MockToken} from "../mocks/MockToken.sol";
 import {MockVoter} from "../mocks/MockVoter.sol";
 import {MockVotingEscrow} from "../mocks/MockVotingEscrow.sol";
-
-contract FeeHarness is ImmutableVeTokenConduit {
-    constructor(address voter_, address veToken_, address sequencerFeed_, PricedToken[] memory pricedTokens_)
-        ImmutableVeTokenConduit(voter_, veToken_, sequencerFeed_, pricedTokens_)
-    {}
-
-    function fee(uint256 amount, uint256 bps) external pure returns (uint256) {
-        return _fee(amount, bps);
-    }
-}
 
 abstract contract ConduitTestBase is Test {
     uint256 internal constant WEEK = 604800;
@@ -76,6 +65,7 @@ abstract contract ConduitTestBase is Test {
         ve.mint(TOKEN_ID, holder);
         vm.prank(holder);
         ve.setConduitApproval(address(conduit), TOKEN_ID, true);
+        rewardBribe = new MockBribe(address(voter), bribeOwner);
     }
 
     function _priced() internal view returns (ImmutableVeTokenConduit.PricedToken[] memory p) {
@@ -94,12 +84,6 @@ abstract contract ConduitTestBase is Test {
         return new ImmutableVeTokenConduit(address(voter), address(ve), address(sequencer), p);
     }
 
-    function _deployHarness() internal returns (FeeHarness) {
-        return new FeeHarness(address(voter), address(ve), address(sequencer), _priced());
-    }
-
-    /// @dev A new pool with a live gauge, `others` votes from other voters, and `usd` dollars of USDC rewards this
-    /// epoch on its external bribe.
     function _pool(uint256 usd, uint256 others) internal returns (address pool) {
         pool = address(uint160(0x1000 + ++poolCount));
         voter.addPool(pool);
@@ -144,7 +128,6 @@ abstract contract ConduitTestBase is Test {
         eurcFeed.set(EURC_USD, block.timestamp);
     }
 
-    /// @dev Moves to the start of the next epoch plus `delay`, as the minter would.
     function _nextEpoch(uint256 delay) internal returns (uint256 epoch) {
         epoch = voter._epochTimestamp() + WEEK;
         vm.warp(epoch + delay);
@@ -154,11 +137,7 @@ abstract contract ConduitTestBase is Test {
         ve.setPastVotes(address(conduit), epoch, POWER);
     }
 
-    /// @dev Makes `amount` of `token` claimable for `TOKEN_ID` from `rewardBribe`.
     function _earn(address token, uint256 amount) internal {
-        if (address(rewardBribe) == address(0)) {
-            rewardBribe = MockBribe(voter.external_bribes(voter.gauges(_pool(0, 0))));
-        }
         rewardBribe.setEarned(TOKEN_ID, token, amount);
     }
 

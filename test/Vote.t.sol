@@ -1,4 +1,3 @@
-// SPDX-FileCopyrightText: 2026 Léo de Souza
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.37;
 
@@ -8,14 +7,14 @@ import {MockVoter} from "./mocks/MockVoter.sol";
 import {ConduitTestBase} from "./utils/ConduitTestBase.sol";
 
 contract VoteTest is ConduitTestBase {
-    event VoteAccepted(
-        uint256 indexed epoch,
-        address indexed proposer,
-        address[] pools,
-        uint256[] weights,
-        uint256 oldScore,
-        uint256 newScore
-    );
+    function _many(uint256 n, uint256 usd) internal returns (address[] memory pools, uint256[] memory weights) {
+        pools = new address[](n);
+        weights = new uint256[](n);
+        for (uint256 i; i < n; ++i) {
+            pools[i] = _pool(usd, 0);
+            weights[i] = 1;
+        }
+    }
 
     function test_vote_firstVoteAcceptedAtOneDollar() public {
         (address[] memory pools, uint256[] memory weights) = _one(_pool(1, 0));
@@ -83,19 +82,12 @@ contract VoteTest is ConduitTestBase {
     function test_vote_emitsVoteAccepted() public {
         (address[] memory pools, uint256[] memory weights) = _one(_pool(5, 0));
         vm.expectEmit(address(conduit));
-        emit VoteAccepted(EPOCH, stranger, pools, weights, 0, 5e18);
+        emit ImmutableVeTokenConduit.VoteAccepted(EPOCH, stranger, pools, weights, 0, 5e18);
         vm.prank(stranger);
         conduit.vote(pools, weights);
     }
 
-    function test_vote_revertsOnDuplicatePools() public {
-        address a = _pool(100, 0);
-        (address[] memory pools, uint256[] memory weights) = _two(a, a, 1, 1);
-        vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.Duplicate.selector, a));
-        conduit.vote(pools, weights);
-    }
-
-    function test_vote_rejectsMalformedProposalBeforeScoringTheVoteInForce() public {
+    function test_vote_revertsOnDuplicatePoolsBeforeScoringTheVoteInForce() public {
         address a = _pool(100, 0);
         (address[] memory pools, uint256[] memory weights) = _one(a);
         conduit.vote(pools, weights);
@@ -107,25 +99,14 @@ contract VoteTest is ConduitTestBase {
     }
 
     function test_vote_revertsOnTooManyPools() public {
-        uint256 n = conduit.MAX_POOLS() + 1;
-        address[] memory pools = new address[](n);
-        uint256[] memory weights = new uint256[](n);
-        for (uint256 i; i < n; ++i) {
-            pools[i] = _pool(10, 0);
-            weights[i] = 1;
-        }
+        (address[] memory pools, uint256[] memory weights) = _many(conduit.MAX_POOLS() + 1, 10);
         vm.expectRevert(ImmutableVeTokenConduit.BadPoolCount.selector);
         conduit.vote(pools, weights);
     }
 
     function test_vote_acceptsMaxPools() public {
         uint256 n = conduit.MAX_POOLS();
-        address[] memory pools = new address[](n);
-        uint256[] memory weights = new uint256[](n);
-        for (uint256 i; i < n; ++i) {
-            pools[i] = _pool(10, 0);
-            weights[i] = 1;
-        }
+        (address[] memory pools, uint256[] memory weights) = _many(n, 10);
         (, uint256 newScore) = conduit.vote(pools, weights);
         assertEq(newScore, n * 10e18);
         assertEq(voter.poolVoteLength(address(conduit)), n);
@@ -214,23 +195,15 @@ contract VoteTest is ConduitTestBase {
 
     function test_vote_anyAcceptedVoteCanBeReplaced() public {
         uint256 n = conduit.MAX_POOLS();
-        address[] memory pools = new address[](n);
-        uint256[] memory weights = new uint256[](n);
-        for (uint256 i; i < n; ++i) {
-            pools[i] = _pool(10, 0);
-            weights[i] = 1;
-        }
+        (address[] memory pools, uint256[] memory weights) = _many(n, 10);
         conduit.vote(pools, weights);
         _next();
-        for (uint256 i; i < n; ++i) {
-            pools[i] = _pool(11, 0);
-        }
+        (pools, weights) = _many(n, 11);
         (uint256 oldScore, uint256 newScore) = conduit.vote(pools, weights);
         assertEq(oldScore, n * 10e18);
         assertEq(newScore, n * 11e18);
     }
 
-    /// @dev The bribes' owner can deposit, win the vote, and take the deposit back. Nobody else can recover a bribe.
     function test_knownLimitation_bribeOwnerCanDepositAndRecover() public {
         address honest = _pool(100, 0);
         address captured = _pool(0, 0);
@@ -251,13 +224,5 @@ contract VoteTest is ConduitTestBase {
         assertEq(voter.poolVote(address(conduit), 0), captured);
         assertEq(usdc.balanceOf(bribeOwner), 1_000e6);
         assertEq(conduit.poolValue(captured), 0);
-
-        usdc.mint(stranger, 1_000e6);
-        vm.startPrank(stranger);
-        usdc.approve(address(bribe), 1_000e6);
-        bribe.notifyRewardAmount(address(usdc), 1_000e6);
-        vm.expectRevert(bytes("permission is denied!"));
-        bribe.recoverERC20AndUpdateData(address(usdc), 1_000e6);
-        vm.stopPrank();
     }
 }

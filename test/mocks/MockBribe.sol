@@ -1,4 +1,3 @@
-// SPDX-FileCopyrightText: 2026 Léo de Souza
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.37;
 
@@ -13,8 +12,6 @@ interface ITransfer {
     function transferFrom(address from, address to, uint256 amount) external;
 }
 
-/// @notice Like BribeV2: rewards are credited to the current epoch, paid only through the Voter, and recoverable
-/// only by the owner.
 contract MockBribe {
     address public immutable voter;
     address public immutable owner;

@@ -1,4 +1,3 @@
-// SPDX-FileCopyrightText: 2026 Léo de Souza
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.37;
 
@@ -62,11 +61,6 @@ interface IFeed {
     function latestRoundData() external view returns (uint80, int256, uint256, uint256, uint80);
 }
 
-/// @notice Runs against Base at the block recorded in `test/fixtures/fork.json` by `test/fixtures/generate.py`.
-/// Votes need a new epoch, since delegated votes count from the next one. The vote tests move to the next epoch and
-/// recreate the recorded epoch's market there: the same whitelisted bribes, deposited through `notifyRewardAmount`,
-/// and the same weights from other voters, written into the Voter's storage. Chainlink's last answers are re-stamped
-/// after the time jump.
 contract ForkTest is Test {
     using stdJson for string;
 
@@ -414,7 +408,12 @@ contract ForkTest is Test {
         uint256[] memory holderBefore = _balances(tokens, HOLDER);
         uint256[] memory treasuryBefore = _balances(tokens, TREASURY);
 
-        vm.recordLogs();
+        uint256[] memory cuts = new uint256[](tokens.length);
+        for (uint256 i; i < tokens.length; ++i) {
+            cuts[i] = amounts[i] / 100;
+        }
+        vm.expectEmit(address(conduit));
+        emit ImmutableVeTokenConduit.Claimed(TOKEN_ID, HOLDER, stranger, tokens, amounts, cuts);
         vm.prank(stranger);
         assertEq(conduit.claim(TOKEN_ID, fees, bribes, tokens), amounts);
 
@@ -423,24 +422,6 @@ contract ForkTest is Test {
         for (uint256 i; i < tokens.length; ++i) {
             assertEq(strangerAfter[i], 0);
         }
-        Vm.Log[] memory logs = vm.getRecordedLogs();
-        bool seen;
-        for (uint256 i; i < logs.length; ++i) {
-            if (logs[i].emitter != address(conduit)) continue;
-            assertEq(logs[i].topics[0], ImmutableVeTokenConduit.Claimed.selector);
-            assertEq(uint256(logs[i].topics[1]), TOKEN_ID);
-            assertEq(address(uint160(uint256(logs[i].topics[2]))), HOLDER);
-            assertEq(address(uint160(uint256(logs[i].topics[3]))), stranger);
-            (address[] memory loggedTokens, uint256[] memory loggedAmounts, uint256[] memory loggedFees) =
-                abi.decode(logs[i].data, (address[], uint256[], uint256[]));
-            assertEq(loggedTokens, tokens);
-            assertEq(loggedAmounts, amounts);
-            for (uint256 j; j < tokens.length; ++j) {
-                assertEq(loggedFees[j], amounts[j] / 100);
-            }
-            seen = true;
-        }
-        assertTrue(seen);
     }
 
     function test_claim_ownerPaysTheSameFee() public {
@@ -482,8 +463,6 @@ contract ForkTest is Test {
         }
     }
 
-    /// @dev The trust the README places in the bribes' owner: it alone, directly or through the bribe factory, can take
-    /// a bribe back.
     function test_bribes_onlyTheirOwnerCanRecoverThem() public {
         address[] memory bribes = fx.readAddressArray(".market.bribes");
         address[] memory tokens = fx.readAddressArray(".market.tokens");

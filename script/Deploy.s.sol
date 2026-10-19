@@ -1,4 +1,3 @@
-// SPDX-FileCopyrightText: 2026 Léo de Souza
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.37;
 
@@ -50,7 +49,7 @@ contract Deploy is Script {
         return vm.computeCreate2Address(SALT, keccak256(code), CREATE2_FACTORY);
     }
 
-    function run() external virtual returns (address deployed) {
+    function run() external returns (address deployed) {
         require(CREATE2_FACTORY.code.length != 0, "CREATE2 deployer not present");
         bytes memory code = initCode();
         deployed = _predict(code);

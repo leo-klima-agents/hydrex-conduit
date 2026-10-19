@@ -1,4 +1,3 @@
-// SPDX-FileCopyrightText: 2026 Léo de Souza
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.37;
 
@@ -16,6 +15,10 @@ abstract contract MockTokenBase {
         balanceOf[to] += amount;
     }
 
+    function move(address from, address to, uint256 amount) external {
+        _transfer(from, to, amount);
+    }
+
     function setBlocked(address account, bool isBlocked) external {
         blocked[account] = isBlocked;
     }
@@ -27,7 +30,6 @@ abstract contract MockTokenBase {
     }
 }
 
-/// @notice Returns `true` from `transfer`, `transferFrom` and `approve`.
 contract MockToken is MockTokenBase {
     constructor(uint8 decimals_) MockTokenBase(decimals_) {}
 
@@ -48,7 +50,6 @@ contract MockToken is MockTokenBase {
     }
 }
 
-/// @notice Returns nothing from `transfer`, like USDT on Ethereum.
 contract MockNoReturnToken is MockTokenBase {
     constructor(uint8 decimals_) MockTokenBase(decimals_) {}
 
@@ -57,7 +58,6 @@ contract MockNoReturnToken is MockTokenBase {
     }
 }
 
-/// @notice Returns `false` without moving anything when `liar` sends, and transfers normally otherwise.
 contract MockFalseToken is MockTokenBase {
     address public liar;
 
@@ -74,7 +74,6 @@ contract MockFalseToken is MockTokenBase {
     }
 }
 
-/// @notice Keeps 1% of every transfer.
 contract MockTaxToken is MockToken {
     constructor(uint8 decimals_) MockToken(decimals_) {}
 
@@ -84,7 +83,6 @@ contract MockTaxToken is MockToken {
     }
 }
 
-/// @notice When `from` sends, calls `target` with `data` first and bubbles its revert.
 contract MockReentrantToken is MockToken {
     address public from;
     address public target;
@@ -108,5 +106,22 @@ contract MockReentrantToken is MockToken {
             }
         }
         super._transfer(sender, to, amount);
+    }
+}
+
+contract MockAlias {
+    MockTokenBase internal immutable token;
+
+    constructor(MockTokenBase token_) {
+        token = token_;
+    }
+
+    function balanceOf(address account) external view returns (uint256) {
+        return token.balanceOf(account);
+    }
+
+    function transfer(address to, uint256 amount) external returns (bool) {
+        token.move(msg.sender, to, amount);
+        return true;
     }
 }

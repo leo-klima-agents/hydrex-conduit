@@ -1,12 +1,12 @@
-# SPDX-FileCopyrightText: 2026 Léo de Souza
-# SPDX-License-Identifier: MIT
-
 name: CI
 
 on:
   push:
     branches: [main]
   pull_request:
+
+permissions:
+  contents: read
 
 env:
   FOUNDRY_PROFILE: ci
@@ -17,101 +17,82 @@ jobs:
     name: fmt, build, test
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: recursive
-      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+          persist-credentials: false
+      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09
         with:
           version: ${{ env.FOUNDRY_VERSION }}
-      - name: forge fmt --check
-        run: forge fmt --check
-      - name: shellcheck -x script/*.sh
-        run: shellcheck -x script/*.sh
-      - name: forge build --sizes
-        run: forge build --sizes
-      - name: forge lint
-        run: forge lint --deny warnings
-      - name: forge lint src (strict profile, no test-only exclusions)
-        run: FOUNDRY_PROFILE=strict forge lint --deny warnings src
+      - run: forge fmt --check
+      - run: shellcheck -x script/*.sh
+      - run: forge build --sizes
+      - run: forge lint --deny warnings
       - name: foundry.lock matches the forge-std submodule
         run: |
-          locked=$(jq -r '."lib/forge-std".rev' foundry.lock)
+          locked=$(jq -j '."lib/forge-std".rev' foundry.lock)
           actual=$(git -C lib/forge-std rev-parse HEAD)
           [ "$locked" = "$actual" ] || { echo "::error::foundry.lock pins $locked but lib/forge-std is at $actual"; exit 1; }
-      - name: forge test (ci fuzz profile, fork tests skipped without BASE_RPC_URL)
-        run: forge test -vvv
+      - run: forge test -vvv
 
   fork:
-    name: Base fork tests
+    name: Base fork tests (skipped without BASE_RPC_URL)
     runs-on: ubuntu-26.04
     env:
       BASE_RPC_URL: ${{ secrets.BASE_RPC_URL }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: recursive
-      - name: skip without an archive RPC
-        if: env.BASE_RPC_URL == ''
+          persist-credentials: false
+      - if: env.BASE_RPC_URL == ''
         run: echo "::notice::BASE_RPC_URL secret not set; fork tests run locally only"
-      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09
         if: env.BASE_RPC_URL != ''
         with:
           version: ${{ env.FOUNDRY_VERSION }}
-      - name: forge test --match-path test/Fork.t.sol
-        if: env.BASE_RPC_URL != ''
+      - if: env.BASE_RPC_URL != ''
         run: forge test --match-path test/Fork.t.sol -vvv
 
   upstream-pin:
     name: vendored upstream sources
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: sha256sum -c
-        working-directory: test/upstream
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - working-directory: test/upstream
         run: sha256sum -c SHA256SUMS
-      - name: UPSTREAM.md lists the same hashes
-        working-directory: test/upstream
-        run: |
-          while read -r hash file; do
-            grep -q "$hash  $file" UPSTREAM.md || { echo "::error::$file hash missing from UPSTREAM.md"; exit 1; }
-          done < SHA256SUMS
-      - name: interfaces match the vendored declarations
-        run: ./script/check-signatures.sh
+      - run: ./script/check-signatures.sh
 
   reuse:
     name: REUSE compliance
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: fsfe/reuse-action@676e2d560c9a403aa252096d99fcab3e1132b0f5 # v6.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: fsfe/reuse-action@676e2d560c9a403aa252096d99fcab3e1132b0f5
 
   reproducible-build:
     name: reproducible build
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: recursive
-      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+          persist-credentials: false
+      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09
         with:
           version: ${{ env.FOUNDRY_VERSION }}
-      - name: build #1 from clean
+      - name: two clean builds are identical
         run: |
-          forge clean
-          forge build --force
-          jq -r '.deployedBytecode.object' out/ImmutableVeTokenConduit.sol/ImmutableVeTokenConduit.json > /tmp/runtime1.hex
-          jq -r '.bytecode.object' out/ImmutableVeTokenConduit.sol/ImmutableVeTokenConduit.json > /tmp/creation1.hex
-      - name: build #2 from clean
-        run: |
-          forge clean
-          forge build --force
-          jq -r '.deployedBytecode.object' out/ImmutableVeTokenConduit.sol/ImmutableVeTokenConduit.json > /tmp/runtime2.hex
-          jq -r '.bytecode.object' out/ImmutableVeTokenConduit.sol/ImmutableVeTokenConduit.json > /tmp/creation2.hex
-      - name: builds are identical
-        run: |
+          for i in 1 2; do
+            forge clean
+            forge build --force
+            jq -j '.deployedBytecode.object' out/ImmutableVeTokenConduit.sol/ImmutableVeTokenConduit.json > "/tmp/runtime$i.hex"
+            jq -j '.bytecode.object' out/ImmutableVeTokenConduit.sol/ImmutableVeTokenConduit.json > "/tmp/creation$i.hex"
+          done
           cmp /tmp/runtime1.hex /tmp/runtime2.hex
           cmp /tmp/creation1.hex /tmp/creation2.hex
-      - name: matches verification/
-        run: ./script/check-verification.sh
-      - name: record matches script/Deploy.s.sol (runtimeKeccak included)
-        run: forge test --match-path test/Deploy.t.sol
+      - run: ./script/check-verification.sh

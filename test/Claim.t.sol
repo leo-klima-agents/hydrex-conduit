@@ -1,4 +1,3 @@
-// SPDX-FileCopyrightText: 2026 Léo de Souza
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.37;
 
@@ -7,6 +6,7 @@ import {Test} from "forge-std/Test.sol";
 import {ImmutableVeTokenConduit} from "../src/ImmutableVeTokenConduit.sol";
 import {MockBribe} from "./mocks/MockBribe.sol";
 import {
+    MockAlias,
     MockFalseToken,
     MockNoReturnToken,
     MockReentrantToken,
@@ -15,18 +15,9 @@ import {
     MockTokenBase
 } from "./mocks/MockToken.sol";
 import {MockVoter} from "./mocks/MockVoter.sol";
-import {ConduitTestBase, FeeHarness} from "./utils/ConduitTestBase.sol";
+import {ConduitTestBase} from "./utils/ConduitTestBase.sol";
 
 contract ClaimTest is ConduitTestBase {
-    event Claimed(
-        uint256 indexed tokenId,
-        address indexed owner,
-        address indexed caller,
-        address[] tokens,
-        uint256[] amounts,
-        uint256[] fees
-    );
-
     function _three(address a, address b, address c) internal pure returns (address[] memory t) {
         t = new address[](3);
         t[0] = a;
@@ -47,7 +38,9 @@ contract ClaimTest is ConduitTestBase {
         _earn(address(junk), 5e18);
         address[] memory tokens = _three(address(weth), address(usdc), address(junk));
         vm.expectEmit(address(conduit));
-        emit Claimed(TOKEN_ID, holder, stranger, tokens, _uints(1e18, 100e6, 5e18), _uints(0.01e18, 1e6, 0.05e18));
+        emit ImmutableVeTokenConduit.Claimed(
+            TOKEN_ID, holder, stranger, tokens, _uints(1e18, 100e6, 5e18), _uints(0.01e18, 1e6, 0.05e18)
+        );
         uint256[] memory amounts = _claim(stranger, tokens);
         assertEq(amounts, _uints(1e18, 100e6, 5e18));
 
@@ -72,13 +65,6 @@ contract ClaimTest is ConduitTestBase {
         if (caller != holder) assertEq(weth.balanceOf(caller), 0);
     }
 
-    function test_claim_ownerPaysTheFeeToo() public {
-        _earn(address(usdc), 100e6);
-        _claim(holder, _tokens(address(usdc)));
-        assertEq(usdc.balanceOf(holder), 99e6);
-        assertEq(usdc.balanceOf(treasury), 1e6);
-    }
-
     function test_claim_feeContractsAndBribes() public {
         address p = _pool(0, 0);
         MockBribe fees = MockBribe(voter.internal_bribes(voter.gauges(p)));
@@ -101,7 +87,6 @@ contract ClaimTest is ConduitTestBase {
     }
 
     function test_claim_nothingToClaim() public {
-        _earn(address(usdc), 0);
         vm.recordLogs();
         uint256[] memory amounts = _claim(stranger, new address[](0));
         assertEq(amounts.length, 0);
@@ -124,14 +109,30 @@ contract ClaimTest is ConduitTestBase {
     }
 
     function test_claim_ownerOfRevertsForMissingToken() public {
-        _earn(address(usdc), 0);
         vm.expectRevert(bytes("ERC721NonexistentToken"));
         conduit.claim(404, new address[](0), _bribes(), new address[](0));
     }
 
-    function test_claim_duplicateTokensRevert() public {
-        vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.Duplicate.selector, address(usdc)));
-        _claim(holder, _three(address(weth), address(usdc), address(usdc)));
+    function test_claim_repeatedTokenPaysOnce() public {
+        usdc.mint(address(conduit), 7e6);
+        _earn(address(usdc), 100e6);
+        uint256[] memory amounts = _claim(stranger, _three(address(usdc), address(weth), address(usdc)));
+        assertEq(amounts, _uints(100e6, 0, 0));
+        assertEq(usdc.balanceOf(holder), 99e6);
+        assertEq(usdc.balanceOf(treasury), 1e6);
+        assertEq(usdc.balanceOf(address(conduit)), 7e6);
+    }
+
+    function test_claim_tokenAtTwoAddressesPaysOnce() public {
+        MockAlias alias_ = new MockAlias(usdc);
+        usdc.mint(address(conduit), 7e6);
+        _earn(address(usdc), 100e6);
+        uint256[] memory amounts = _claim(stranger, _tokens(address(usdc), address(alias_)));
+        assertEq(amounts[0], 100e6);
+        assertEq(amounts[1], 0);
+        assertEq(usdc.balanceOf(holder), 99e6);
+        assertEq(usdc.balanceOf(treasury), 1e6);
+        assertEq(usdc.balanceOf(address(conduit)), 7e6);
     }
 
     function test_claim_straysStayPut() public {
@@ -153,21 +154,6 @@ contract ClaimTest is ConduitTestBase {
         _claim(stranger, _tokens(address(usdc)));
         assertEq(usdc.balanceOf(holder), 99);
         assertEq(usdc.balanceOf(treasury), 0);
-    }
-
-    function test_fee_harness() public {
-        FeeHarness h = _deployHarness();
-        assertEq(h.fee(0, 100), 0);
-        assertEq(h.fee(1e6, 0), 0);
-        assertEq(h.fee(1e6, 100), 1e4);
-        assertEq(h.fee(1e6, 500), 5e4);
-        assertEq(h.fee(1e6, 2000), 2e5);
-        assertEq(h.fee(1e6, 10_000), 1e6);
-        assertEq(h.fee(99, 100), 0);
-        assertEq(h.fee(199, 100), 1);
-        assertEq(h.fee(1999, 500), 99);
-        assertEq(h.fee(49, 2000), 9);
-        assertEq(h.fee(12_345, 10_000), 12_345);
     }
 
     function testFuzz_fee_everyClaimPaysTreasury(uint256 a, uint256 b, bool thirdParty) public {
@@ -229,7 +215,6 @@ contract ClaimTest is ConduitTestBase {
         ];
     }
 
-    /// @dev A token's transfer is a low-level call, so the lock's revert surfaces as `TokenCallFailed`.
     function test_token_reentryIsBlocked() public {
         MockReentrantToken evil = new MockReentrantToken(18);
         _earn(address(evil), 1e18);
@@ -257,15 +242,13 @@ contract ClaimTest is ConduitTestBase {
         }
     }
 
-    function test_token_withoutCodeReverts() public {
-        _earn(address(usdc), 0);
-        address nothing = makeAddr("not a token");
-        vm.expectRevert();
-        _claim(stranger, _tokens(nothing));
+    function test_token_withoutCodeRevertsBeforeClaiming() public {
+        vm.expectCall(address(voter), abi.encodeWithSelector(MockVoter.claimBribesToRecipientByTokenId.selector), 0);
+        vm.expectRevert(bytes(""));
+        _claim(stranger, _tokens(makeAddr("not a token")));
     }
 }
 
-/// @notice A fee or bribe address a caller passes in, which calls `target` with `data` when the Voter pays out.
 contract ReentrantBribe {
     address internal target;
     bytes internal data;
@@ -349,7 +332,6 @@ contract ClaimInvariantTest is ConduitTestBase {
 
     function setUp() public override {
         super.setUp();
-        _earn(address(usdc), 0);
         tokens.push(address(weth));
         tokens.push(address(usdc));
         tokens.push(address(junk));

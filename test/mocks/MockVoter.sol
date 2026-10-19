@@ -1,11 +1,9 @@
-// SPDX-FileCopyrightText: 2026 Léo de Souza
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.37;
 
 import {MockBribe} from "./MockBribe.sol";
 import {MockVotingEscrow} from "./MockVotingEscrow.sol";
 
-/// @notice Mirrors VoterV5's `vote`, `_reset` and `_voteDelay` arithmetic and checks, and its claims by token ID.
 contract MockVoter {
     uint256 internal constant WEEK = 604800;
 
@@ -30,8 +28,6 @@ contract MockVoter {
     error VotedAlready();
     error InsufficientVotingPower();
     error NotApprovedOrOwner();
-
-    event Voted(address indexed voter, uint256 weight);
 
     constructor(MockVotingEscrow ve_, address bribeOwner_) {
         ve = ve_;
@@ -99,7 +95,6 @@ contract MockVoter {
             weightsPerEpoch[epoch][pool] += weight;
             votes[msg.sender][pool] += weight;
             used += weight;
-            emit Voted(msg.sender, weight);
             MockBribe(internal_bribes[gauge]).deposit(weight, msg.sender);
             MockBribe(external_bribes[gauge]).deposit(weight, msg.sender);
         }

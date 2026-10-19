@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# SPDX-FileCopyrightText: 2026 Léo de Souza
-# SPDX-License-Identifier: MIT
-# Checks that every Hydrex member declared in src/interfaces/ has the same argument and return types as its
-# declaration in the vendored sources under test/upstream/hydrex/.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -10,7 +6,6 @@ U=test/upstream/hydrex
 I=src/interfaces
 status=0
 
-# Prints name(argument types)(return types) for the first declaration of function $2 in file $1.
 sig() {
   awk -v name="$2" '
     { src = src " " $0 }
@@ -44,8 +39,6 @@ sig() {
     }' "$1"
 }
 
-# BribeV2 declares rewardData as a public mapping of a struct, so its getter returns the struct's fields in order.
-# The conduit reads the second one, so the field names must match too.
 reward_data_sig() {
   local file=$U/bribe/BribeV2.sol types names
   grep -qF 'mapping(address => mapping(uint256 => Reward)) public rewardData;' "$file" || return 1
