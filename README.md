@@ -137,7 +137,7 @@ Not deployed yet.
 | `FEE_BPS` | `100`, in the source |
 | Method | CREATE2 through the default deployer `0x4e59b44847b379578588920cA78FbF26c0B4956C` |
 | Salt | `keccak256("metadex.cafe/ImmutableVeTokenConduit/v1")` |
-| Address | `0x10913538f0D2d08e3531d80798Dff31379d4f434` |
+| Address | `0xA5d7010F77C8b9f035cF7d0159f335b44A186877` |
 
 Every constructor argument is a constant in `script/Deploy.s.sol`. The treasury and the fee are constants in the
 source, so they are part of the bytecode hash and the address. The constructor checks that every feed answers and

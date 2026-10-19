@@ -20,7 +20,7 @@ contract VoteTest is ConduitTestBase {
     function test_vote_firstVoteAcceptedAtOneDollar() public {
         (address[] memory pools, uint256[] memory weights) = _one(_pool(1, 0));
         vm.prank(stranger);
-        (uint256 newScore, uint256 oldScore) = conduit.vote(pools, weights);
+        (uint256 oldScore, uint256 newScore) = conduit.vote(pools, weights);
         assertEq(newScore, 1e18);
         assertEq(oldScore, 0);
         assertEq(voter.lastVoted(address(conduit)), block.timestamp);
@@ -31,7 +31,7 @@ contract VoteTest is ConduitTestBase {
         address pool = _pool(0, 0);
         _reward(pool, address(usdc), 1e6 - 1);
         (address[] memory pools, uint256[] memory weights) = _one(pool);
-        vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.NotBetter.selector, 1e18 - 1e12, 0));
+        vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.NotBetter.selector, 0, 1e18 - 1e12));
         conduit.vote(pools, weights);
     }
 
@@ -43,7 +43,7 @@ contract VoteTest is ConduitTestBase {
         conduit.vote(pools, weights);
         _next();
         (pools, weights) = _one(b);
-        vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.NotBetter.selector, 101e18 - 1e12, 100e18));
+        vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.NotBetter.selector, 100e18, 101e18 - 1e12));
         conduit.vote(pools, weights);
         (pools, weights) = _one(a);
         vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.NotBetter.selector, 100e18, 100e18));
@@ -58,7 +58,7 @@ contract VoteTest is ConduitTestBase {
         _next();
         (pools, weights) = _one(b);
         vm.prank(stranger);
-        (uint256 newScore, uint256 oldScore) = conduit.vote(pools, weights);
+        (uint256 oldScore, uint256 newScore) = conduit.vote(pools, weights);
         assertEq(oldScore, 100e18);
         assertEq(newScore, 101e18);
         assertEq(voter.poolVoteLength(address(conduit)), 1);
@@ -76,7 +76,7 @@ contract VoteTest is ConduitTestBase {
         assertEq(conduit.currentScore(), 50e18);
         _next();
         (pools, weights) = _two(a, b, 1, 1);
-        (uint256 newScore,) = conduit.vote(pools, weights);
+        (, uint256 newScore) = conduit.vote(pools, weights);
         assertEq(newScore, 2 * (100e18 * (POWER / 2) / (POWER + POWER / 2)));
     }
 
@@ -91,6 +91,17 @@ contract VoteTest is ConduitTestBase {
     function test_vote_revertsOnDuplicatePools() public {
         address a = _pool(100, 0);
         (address[] memory pools, uint256[] memory weights) = _two(a, a, 1, 1);
+        vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.Duplicate.selector, a));
+        conduit.vote(pools, weights);
+    }
+
+    function test_vote_rejectsMalformedProposalBeforeScoringTheVoteInForce() public {
+        address a = _pool(100, 0);
+        (address[] memory pools, uint256[] memory weights) = _one(a);
+        conduit.vote(pools, weights);
+        _next();
+        (pools, weights) = _two(a, a, 1, 1);
+        vm.expectCall(address(voter), abi.encodeWithSelector(MockVoter.poolVoteLength.selector), 0);
         vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.Duplicate.selector, a));
         conduit.vote(pools, weights);
     }
@@ -115,7 +126,7 @@ contract VoteTest is ConduitTestBase {
             pools[i] = _pool(10, 0);
             weights[i] = 1;
         }
-        (uint256 newScore,) = conduit.vote(pools, weights);
+        (, uint256 newScore) = conduit.vote(pools, weights);
         assertEq(newScore, n * 10e18);
         assertEq(voter.poolVoteLength(address(conduit)), n);
     }
@@ -195,7 +206,7 @@ contract VoteTest is ConduitTestBase {
         _nextEpoch(1 hours);
         _reward(a, address(usdc), 1e6);
         assertEq(conduit.currentScore(), 0);
-        (uint256 newScore, uint256 oldScore) = conduit.vote(pools, weights);
+        (uint256 oldScore, uint256 newScore) = conduit.vote(pools, weights);
         assertEq(oldScore, 0);
         assertEq(newScore, 1e18);
         assertEq(voter.weights(a), POWER);
@@ -214,7 +225,7 @@ contract VoteTest is ConduitTestBase {
         for (uint256 i; i < n; ++i) {
             pools[i] = _pool(11, 0);
         }
-        (uint256 newScore, uint256 oldScore) = conduit.vote(pools, weights);
+        (uint256 oldScore, uint256 newScore) = conduit.vote(pools, weights);
         assertEq(oldScore, n * 10e18);
         assertEq(newScore, n * 11e18);
     }

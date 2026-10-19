@@ -188,7 +188,7 @@ contract ScoreTest is ConduitTestBase {
         (pools, weights) = _two(b, a, 3, 1);
         uint256 expected = Reference.share(300e18, POWER, POWER * 3 / 4) + Reference.share(100e18, POWER, POWER / 4);
         assertEq(conduit.score(pools, weights), expected);
-        (uint256 newScore, uint256 oldScore) = conduit.vote(pools, weights);
+        (uint256 oldScore, uint256 newScore) = conduit.vote(pools, weights);
         assertEq(oldScore, Reference.share(100e18, POWER, POWER / 2) + Reference.share(300e18, POWER, POWER / 2));
         assertEq(newScore, expected);
     }

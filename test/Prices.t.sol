@@ -94,7 +94,7 @@ contract PricesTest is ConduitTestBase {
     function test_vote_badFeedDoesNotBlockVoting() public {
         ethFeed.setReverts(true);
         (address[] memory pools, uint256[] memory weights) = _one(pool);
-        (uint256 newScore,) = conduit.vote(pools, weights);
+        (, uint256 newScore) = conduit.vote(pools, weights);
         assertEq(newScore, 10e18);
     }
 

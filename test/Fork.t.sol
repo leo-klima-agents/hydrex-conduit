@@ -278,7 +278,7 @@ contract ForkTest is Test {
         assertEq(conduit.score(pools, weights), expected);
 
         vm.prank(stranger);
-        (uint256 newScore, uint256 oldScore) = conduit.vote(pools, weights);
+        (uint256 oldScore, uint256 newScore) = conduit.vote(pools, weights);
         assertEq(oldScore, 0);
         assertEq(newScore, expected);
         assertApproxEqAbs(newScore, fx.readUint(".market.optimum"), 1e9);
@@ -297,7 +297,7 @@ contract ForkTest is Test {
         uint256[] memory w1 = new uint256[](1);
         w1[0] = 1;
         vm.expectRevert(
-            abi.encodeWithSelector(ImmutableVeTokenConduit.NotBetter.selector, conduit.score(one, w1), newScore)
+            abi.encodeWithSelector(ImmutableVeTokenConduit.NotBetter.selector, newScore, conduit.score(one, w1))
         );
         conduit.vote(one, w1);
 
@@ -318,7 +318,7 @@ contract ForkTest is Test {
 
         _next();
         vm.prank(stranger);
-        (newScore, oldScore) = conduit.vote(better, wb);
+        (oldScore, newScore) = conduit.vote(better, wb);
         assertEq(newScore, betterScore);
         assertEq(oldScore, expected);
         assertEq(IVoter(VOTER).poolVoteLength(address(conduit)), pools.length + 1);

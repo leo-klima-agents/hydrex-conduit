@@ -90,7 +90,7 @@ contract ImmutableVeTokenConduit {
     error ZeroWeight();
     error ZeroVotes(address pool);
     error DeadGauge(address pool);
-    error NotBetter(uint256 newScore, uint256 oldScore);
+    error NotBetter(uint256 oldScore, uint256 newScore);
     error TokenCallFailed(address token);
     error Reentrancy();
 
@@ -133,12 +133,12 @@ contract ImmutableVeTokenConduit {
     function vote(address[] calldata pools, uint256[] calldata weights)
         external
         nonReentrant
-        returns (uint256 newScore, uint256 oldScore)
+        returns (uint256 oldScore, uint256 newScore)
     {
         Context memory ctx = _context();
-        oldScore = _currentScore(ctx);
         newScore = _proposalScore(ctx, pools, weights);
-        if (newScore < oldScore + MIN_GAIN) revert NotBetter(newScore, oldScore);
+        oldScore = _currentScore(ctx);
+        if (newScore < oldScore + MIN_GAIN) revert NotBetter(oldScore, newScore);
         IVoter(voter).vote(pools, weights);
         emit VoteAccepted(ctx.epoch, msg.sender, pools, weights, oldScore, newScore);
     }
