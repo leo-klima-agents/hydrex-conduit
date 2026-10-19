@@ -67,7 +67,7 @@ sequencer down, or within an hour of it coming back.
 ## How claims work
 
 `claim(tokenId, feeAddresses, bribeAddresses, tokens)` can be called by anyone, for any veNFT whose owner has opted in.
-The Voter refuses the claim otherwise.
+It needs at least one fee or bribe contract, so the Voter always checks the opt-in, and refuses the claim otherwise.
 
 1. The conduit claims `tokens` from the given fee and bribe contracts to itself.
 2. For each token, it sends 1% of the amount claimed (`FEE_BPS = 100`, rounded down) to `TREASURY`, and the rest to
@@ -93,7 +93,8 @@ What remains trusted:
 - **Hydrex.** The Voter, the VotingEscrow and the bribe beacon are upgradeable.
 - **The bribes' owner**, `0x1aE3753d9b60743A89159CcFF8E251C60B560311`, which also owns the bribe factory. It can
   deposit a bribe, win the vote with it and take it back in the same transaction, or take any bribe's tokens.
-  `test/Vote.t.sol` shows that nobody else can.
+  `test/Fork.t.sol` checks on Base that nobody else can, directly or through the bribe factory, and
+  `test/Vote.t.sol` plays out the attack.
 - **Chainlink**, for prices and the sequencer status, in votes only.
 - **Reward tokens.** A token that blocks transfers to the treasury or to an owner, as Circle can for USDC, cannot be
   claimed through the conduit while it does.
@@ -136,7 +137,7 @@ Not deployed yet.
 | `FEE_BPS` | `100`, in the source |
 | Method | CREATE2 through the default deployer `0x4e59b44847b379578588920cA78FbF26c0B4956C` |
 | Salt | `keccak256("metadex.cafe/ImmutableVeTokenConduit/v1")` |
-| Address | `0x3768bbf628d05204895dFbf58e1749Dbf38c7B33` |
+| Address | `0x10913538f0D2d08e3531d80798Dff31379d4f434` |
 
 Every constructor argument is a constant in `script/Deploy.s.sol`. The treasury and the fee are constants in the
 source, so they are part of the bytecode hash and the address. The constructor checks that every feed answers and
@@ -187,6 +188,10 @@ hashes on Base.
 ## Known limitations
 
 - Only the four whitelisted tokens count in votes.
+- A token whose feed is stale or broken counts as zero in both the vote in force and the proposal. While that lasts,
+  a proposal that moves votes away from that token's bribes can win even if it is worse in real terms. For WETH and
+  cbBTC this takes more than 25 minutes without a Chainlink update. Reverting instead would stop votes for good if a
+  feed were retired.
 - Anyone can claim any of an opted-in holder's rewards at any time, in any token they choose, and the holder pays
   1% of each.
 - A holder avoids the fee only by claiming directly from the Voter before someone claims through the conduit.

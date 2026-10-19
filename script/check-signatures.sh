@@ -90,7 +90,7 @@ check IVotingEscrow.sol setConduitApprovalConfig votingescrow/IVotingEscrowV2_Lo
 check IBribe.sol rewardData mapping
 
 declared=$(grep -ohE 'function [A-Za-z_]+\(' "$I/IVoter.sol" "$I/IVotingEscrow.sol" "$I/IBribe.sol" | sed -E 's/function |\(//g' | sort)
-checked=$(grep -oE '^check I[A-Za-z]+\.sol [A-Za-z_]+' "$0" | awk '{ print $3 }' | sort)
+checked=$(grep -oE '^check I[A-Za-z]+\.sol [A-Za-z_]+' script/check-signatures.sh | awk '{ print $3 }' | sort)
 unchecked=$(comm -23 <(echo "$declared") <(echo "$checked") | grep -vx ownerOf || true)
 if [ -n "$unchecked" ]; then
   echo "::error::not checked against upstream: $unchecked" >&2

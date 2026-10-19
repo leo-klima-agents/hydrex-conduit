@@ -120,7 +120,8 @@ logic are separate contracts that the Voter and the VotingEscrow `delegatecall`.
 7. **Recovery.** `recoverERC20AndUpdateData` and `emergencyRecoverERC20` are `onlyAllowed`: the bribe's owner or its
    bribe factory ([`BribeV2.sol`](hydrex/bribe/BribeV2.sol#L402-L449)). The factory exposes both only to its own
    owner ([`BribeFactoryV4`](https://basescan.org/address/0x25f4d95ae6734b517675cbe863cf91879964b970#code)
-   lines 255-274), which is the same address as the bribes' owner.
+   lines 255-274), which is the same address as the bribes' owner. `test/Fork.t.sol` checks that nobody else can call
+   any of the four.
 8. **Claims by token ID.** `claimBribesToRecipientByTokenId` and `claimFeesToRecipientByTokenId` require
    `isApprovedClaimRedirectOrOwner(msg.sender, tokenId)`
    ([`VoterV5_ClaimLogic`](https://basescan.org/address/0x68Ed6a9fd3fe6DB26dEf56641c3B251278d8C21D#code) lines 153

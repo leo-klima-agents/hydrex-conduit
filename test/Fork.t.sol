@@ -7,6 +7,7 @@ import {Test, Vm} from "forge-std/Test.sol";
 
 import {Deploy} from "../script/Deploy.s.sol";
 import {ImmutableVeTokenConduit} from "../src/ImmutableVeTokenConduit.sol";
+import {IBribe} from "../src/interfaces/IBribe.sol";
 import {IERC20} from "../src/interfaces/IERC20.sol";
 import {IVoter} from "../src/interfaces/IVoter.sol";
 import {IVotingEscrow} from "../src/interfaces/IVotingEscrow.sol";
@@ -27,8 +28,16 @@ interface IVotingEscrowExtra {
 
 interface IBribeExtra {
     function notifyRewardAmount(address token, uint256 amount) external;
+    function recoverERC20AndUpdateData(address token, uint256 amount) external;
+    function emergencyRecoverERC20(address token, uint256 amount) external;
     function owner() external view returns (address);
     function bribeFactory() external view returns (address);
+}
+
+interface IBribeFactory {
+    function recoverERC20AndUpdateData(address[] memory bribes, address[] memory tokens, uint256[] memory amounts)
+        external;
+    function recoverERC20From(address[] memory bribes, address[] memory tokens, uint256[] memory amounts) external;
 }
 
 interface IOwned {
@@ -471,5 +480,47 @@ contract ForkTest is Test {
             assertEq(holderAfter[i] - holderBefore[i], amounts[i]);
             assertEq(treasuryAfter[i], treasuryBefore[i]);
         }
+    }
+
+    /// @dev The trust the README places in the bribes' owner: it alone, directly or through the bribe factory, can take
+    /// a bribe back.
+    function test_bribes_onlyTheirOwnerCanRecoverThem() public {
+        address[] memory bribes = fx.readAddressArray(".market.bribes");
+        address[] memory tokens = fx.readAddressArray(".market.tokens");
+        uint256[] memory amounts = fx.readUintArray(".market.amounts");
+        uint256 k;
+        while (tokens[k] != USDC) ++k;
+        address bribe = bribes[k];
+        uint256 amount = amounts[k];
+        (, uint256 recorded,) = IBribe(bribe).rewardData(USDC, fx.readUint(".epoch"));
+        assertEq(recorded, amount);
+
+        address[] memory b = new address[](1);
+        b[0] = bribe;
+        address[] memory t = new address[](1);
+        t[0] = USDC;
+        uint256[] memory a = new uint256[](1);
+        a[0] = amount;
+        IBribeFactory factory = IBribeFactory(IBribeExtra(bribe).bribeFactory());
+        address[3] memory others = [stranger, HOLDER, TREASURY];
+        for (uint256 i; i < others.length; ++i) {
+            vm.startPrank(others[i]);
+            vm.expectRevert(bytes("permission is denied!"));
+            IBribeExtra(bribe).recoverERC20AndUpdateData(USDC, amount);
+            vm.expectRevert(bytes("permission is denied!"));
+            IBribeExtra(bribe).emergencyRecoverERC20(USDC, amount);
+            vm.expectRevert(bytes("Ownable: caller is not the owner"));
+            factory.recoverERC20AndUpdateData(b, t, a);
+            vm.expectRevert(bytes("Ownable: caller is not the owner"));
+            factory.recoverERC20From(b, t, a);
+            vm.stopPrank();
+        }
+
+        uint256 before = IERC20(USDC).balanceOf(BRIBE_OWNER);
+        vm.prank(BRIBE_OWNER);
+        factory.recoverERC20AndUpdateData(b, t, a);
+        (, recorded,) = IBribe(bribe).rewardData(USDC, fx.readUint(".epoch"));
+        assertEq(recorded, 0);
+        assertEq(IERC20(USDC).balanceOf(BRIBE_OWNER) - before, amount);
     }
 }

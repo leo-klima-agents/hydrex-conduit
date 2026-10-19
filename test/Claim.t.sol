@@ -92,10 +92,20 @@ contract ClaimTest is ConduitTestBase {
         assertEq(usdc.balanceOf(holder), 99e6);
     }
 
+    function test_claim_withoutRewardContractsReverts() public {
+        ve.mint(8, makeAddr("other holder"));
+        vm.expectRevert(ImmutableVeTokenConduit.NoRewardContracts.selector);
+        conduit.claim(8, new address[](0), new address[](0), _tokens(address(usdc)));
+        vm.expectRevert(ImmutableVeTokenConduit.NoRewardContracts.selector);
+        conduit.claim(TOKEN_ID, new address[](0), new address[](0), new address[](0));
+    }
+
     function test_claim_nothingToClaim() public {
-        uint256[] memory amounts = conduit.claim(TOKEN_ID, new address[](0), new address[](0), new address[](0));
-        assertEq(amounts.length, 0);
         _earn(address(usdc), 0);
+        vm.recordLogs();
+        uint256[] memory amounts = _claim(stranger, new address[](0));
+        assertEq(amounts.length, 0);
+        assertEq(vm.getRecordedLogs().length, 1);
         vm.expectCall(address(weth), abi.encodeWithSelector(MockToken.transfer.selector), 0);
         amounts = _claim(stranger, _tokens(address(weth)));
         assertEq(amounts[0], 0);
@@ -114,8 +124,9 @@ contract ClaimTest is ConduitTestBase {
     }
 
     function test_claim_ownerOfRevertsForMissingToken() public {
+        _earn(address(usdc), 0);
         vm.expectRevert(bytes("ERC721NonexistentToken"));
-        conduit.claim(404, new address[](0), new address[](0), new address[](0));
+        conduit.claim(404, new address[](0), _bribes(), new address[](0));
     }
 
     function test_claim_duplicateTokensRevert() public {

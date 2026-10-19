@@ -80,6 +80,7 @@ contract ImmutableVeTokenConduit {
     error NotAContract(address account);
     error BadConfig();
     error Duplicate(address account);
+    error NoRewardContracts();
     error BadFeed(address feed);
     error SequencerDown();
     error EpochStale();
@@ -162,6 +163,9 @@ contract ImmutableVeTokenConduit {
         address[] calldata bribeAddresses,
         address[] calldata tokens
     ) external nonReentrant returns (uint256[] memory amounts) {
+        if (feeAddresses.length == 0 && bribeAddresses.length == 0) {
+            revert NoRewardContracts();
+        }
         address owner = IVotingEscrow(veToken).ownerOf(tokenId);
         uint256 n = tokens.length;
         amounts = new uint256[](n);
