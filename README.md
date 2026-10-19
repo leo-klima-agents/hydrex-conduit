@@ -70,14 +70,16 @@ Votes, and claims by anyone but the owner, revert while Chainlink's sequencer up
 whose owner has opted in. The Voter refuses the claim otherwise.
 
 1. The conduit claims `claimTokens` from the given fee and bribe contracts to itself.
-2. It swaps every claimed token other than USDC through a fixed router (KyberSwap's MetaAggregationRouterV2). Each
-   swap is approved for exactly the claimed amount, and the approval is reset to zero afterwards. A claimed token
-   left unswapped makes the claim revert. USDC is never approved.
+2. It swaps every claimed token other than USDC through one of two fixed routers: KyberSwap's
+   MetaAggregationRouterV2 and 1inch's AggregationRouterV6. Each swap is approved for exactly the claimed amount, and
+   the approval is reset to zero afterwards. A claimed token left unswapped makes the claim revert. USDC is never
+   approved.
 3. It takes 1% of the USDC received (`FEE_BPS = 100`) for `TREASURY`, and sends the rest to `ownerOf(tokenId)`. There
    is no recipient parameter, and the conduit holds nothing after the transaction.
 
 When the caller is not the owner, every claimed token must be whitelisted with a fresh feed, and the USDC received
-must be at least the Chainlink value of everything claimed, USDC included, less 1% (`MAX_SLIPPAGE_BPS`). This floor
+must be at least the USDC claimed plus the Chainlink value of the other claimed tokens, less 1% of that value
+(`MAX_SLIPPAGE_BPS`). Claimed USDC counts in full, so it cannot make up for a swap paid to someone else. This floor
 is what stops a caller from routing a holder's rewards through a bad swap or sending the output elsewhere.
 `claimFloor(tokens, amounts)` returns the same floor, so callers can size their routes first.
 
@@ -90,7 +92,7 @@ The conduit works on balance changes. Tokens sent to it by mistake are neither p
 
 | Who | Can | Cannot |
 |---|---|---|
-| Anyone | propose a vote, accepted only if it scores at least $1 higher; claim any opted-in veNFT's whitelisted rewards, paid to its owner, within 1% of their Chainlink value | make the vote score worse; redirect rewards; claim another holder's tokens that have no feed |
+| Anyone | propose a vote, accepted only if it scores at least $1 higher; claim any opted-in veNFT's whitelisted rewards, paid to its owner, within 1% of the Chainlink value of the swapped tokens | make the vote score worse; redirect rewards; claim another holder's tokens that have no feed |
 | Treasury (`TREASURY`) | receive the fee | anything else |
 | Holder | claim any of their rewards through the conduit, or directly from the Voter without the fee | |
 
@@ -104,7 +106,8 @@ What remains trusted:
   `test/Vote.t.sol` shows that nobody else can.
 - **Chainlink**, for prices and the sequencer status.
 - **Circle**, which could block USDC transfers to the treasury or to an owner.
-- **KyberSwap's router**, whose output the floor checks for third-party claims but not for an owner's own claims.
+- **The KyberSwap and 1inch routers**, whose output the floor checks for third-party claims but not for an owner's own
+  claims. 1inch's owner can pause its router.
 
 ## Opting in
 
@@ -120,13 +123,14 @@ owner has to opt in again.
 
 Any funded address can propose or claim.
 
-- **Proposing.** Read `poolValue(pool)` and the Voter's `weights(pool)` for the pools that pay, and compute the
-  allocation that maximises the score over at most 20 pools: the optimum gives pool `i` about
+- **Proposing.** For each pool that pays, read `poolValue(pool)` as B and the Voter's `weights(pool)` as V, less
+  `votes(conduit, pool)` if the conduit has voted this epoch (`lastVoted(conduit)` is at or after the epoch's start).
+  Then compute the allocation that maximises the score over at most 20 pools: the optimum gives pool `i` about
   `sqrt(B_i × V_i / λ) − V_i` votes, with `λ` set so that the votes add up to the conduit's power. Check it with
   `score(pools, weights)` and an `eth_call` to `vote`, then send it. The Voter takes one vote per block.
 - **Claiming.** For an opted-in veNFT, find the fee and bribe contracts whose `earned(tokenId, token)` is positive,
-  fetch a KyberSwap route to USDC for each exact amount with the conduit as sender and recipient, check the total
-  against `claimFloor`, simulate, and send.
+  fetch a KyberSwap or 1inch route to USDC for each exact amount with the conduit as sender and recipient, check the
+  total against `claimFloor`, simulate, and send.
 - **Holders** can claim tokens without a feed themselves through `claim`, with their own `minUsdcOut`, or skip the
   conduit and claim from the Voter.
 
@@ -141,13 +145,13 @@ Not deployed yet.
 | `veToken` | `0x25B2ED7149fb8A05f6eF9407d9c8F878f59cd1e1`, Hydrex VotingEscrow |
 | `usdc` | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
 | `sequencerFeed` | `0xBCF85224fc0756B9Fa45aA7892530B47e10b6433` |
-| `routers` | `[0x6131B5fae19EA4f9D964eAc0408E4408b66337b5]` |
+| `routers` | `[0x6131B5fae19EA4f9D964eAc0408E4408b66337b5, 0x111111125421cA6dc452d289314280a0f8842A65]`: KyberSwap's MetaAggregationRouterV2 and 1inch's AggregationRouterV6 |
 | `pricedTokens` | the whitelist above |
 | `TREASURY` | `0x450c72de8c0079B49AcedF294a13011bd09D125B`, a Safe (2 of 3), in the source |
 | `FEE_BPS` | `100`, in the source |
 | Method | CREATE2 through the default deployer `0x4e59b44847b379578588920cA78FbF26c0B4956C` |
 | Salt | `keccak256("metadex.cafe/ImmutableVeTokenConduit/usdc/v1")` |
-| Address | `0xAA21A117d74eA4E73154eB9Ad357CE562e60dFf9` |
+| Address | `0x5fFc9Fa07f5Cabb9AED1f8Bc51cDB65740d01961` |
 
 Every constructor argument is a constant in `script/Deploy.s.sol`. The treasury and the fee are constants in the
 source, so they are part of the bytecode hash and the address. The constructor checks that every feed answers and
@@ -187,7 +191,9 @@ hashes on Base.
   malicious router and random callers.
 - `BASE_RPC_URL=<archive rpc> forge test --match-path test/Fork.t.sol` runs against Base at the block recorded in
   [`test/fixtures/fork.json`](test/fixtures/fork.json). It opts in veNFT 14247, claims its real rewards as a stranger
-  through a recorded KyberSwap route, claims HYDX as its owner, and moves to the next epoch to vote. There it
+  through a recorded KyberSwap route and through 1inch, shows that a swap paid to the caller is refused even when
+  the claimed USDC alone would have covered it at 99%, claims HYDX as its owner, and moves to the next epoch to vote.
+  There it
   recreates the recorded epoch's bribes and other voters' weights, proposes the water-filling allocation computed
   off chain by [`test/fixtures/generate.py`](test/fixtures/generate.py), and checks that the score matches it
   exactly. The worst case, a 20-pool proposal replacing a different 20-pool vote, uses about 9.9M gas, under the 14M
@@ -208,7 +214,8 @@ hashes on Base.
 - Nothing can be changed. A new treasury, fee, router or feed means a new deployment, and holders opting in again.
 - If a feed is deprecated, its token counts as zero in votes and cannot be claimed by third parties. If the sequencer
   feed stops answering, votes and third-party claims stop; owners' own claims still work.
-- If KyberSwap retires its router, swaps stop working; direct claims still work.
+- If KyberSwap or 1inch retires or pauses its router, swaps go through the other one. If both stop, swaps stop working;
+  direct claims still work.
 - If USDC transfers to the treasury are ever blocked, every claim through the conduit reverts; direct claims still
   work.
 - Tokens without a USDC route must be claimed directly.

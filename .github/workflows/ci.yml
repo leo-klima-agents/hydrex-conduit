@@ -10,7 +10,7 @@ on:
 
 env:
   FOUNDRY_PROFILE: ci
-  FOUNDRY_VERSION: v1.8.3
+  FOUNDRY_VERSION: v1.8.5
 
 jobs:
   check:

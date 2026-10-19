@@ -12,7 +12,8 @@ contract Deploy is Script {
     address public constant VE_TOKEN = 0x25B2ED7149fb8A05f6eF9407d9c8F878f59cd1e1;
     address public constant USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
     address public constant SEQUENCER_FEED = 0xBCF85224fc0756B9Fa45aA7892530B47e10b6433;
-    address public constant ROUTER = 0x6131B5fae19EA4f9D964eAc0408E4408b66337b5;
+    address public constant KYBER_ROUTER = 0x6131B5fae19EA4f9D964eAc0408E4408b66337b5;
+    address public constant ONEINCH_ROUTER = 0x111111125421cA6dc452d289314280a0f8842A65;
 
     address public constant WETH = 0x4200000000000000000000000000000000000006;
     address public constant ETH_USD = 0x50015f8b17fb2C290Dde41fDc246ed0dcEE93a8b;
@@ -28,8 +29,9 @@ contract Deploy is Script {
     bytes32 public constant SALT = keccak256(bytes(SALT_PREIMAGE));
 
     function routers() public pure returns (address[] memory r) {
-        r = new address[](1);
-        r[0] = ROUTER;
+        r = new address[](2);
+        r[0] = KYBER_ROUTER;
+        r[1] = ONEINCH_ROUTER;
     }
 
     function pricedTokens() public pure returns (ImmutableVeTokenConduit.PricedToken[] memory p) {

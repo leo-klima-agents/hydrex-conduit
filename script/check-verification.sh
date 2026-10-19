@@ -45,7 +45,7 @@ expect .deployment.voter "$(addr VOTER)"
 expect .deployment.veToken "$(addr VE_TOKEN)"
 expect .deployment.usdc "$(addr USDC)"
 expect .deployment.sequencerFeed "$(addr SEQUENCER_FEED)"
-expect '.deployment.routers | join(",")' "$(addr ROUTER)"
+expect '.deployment.routers | join(",")' "$(addr KYBER_ROUTER),$(addr ONEINCH_ROUTER)"
 expect '.deployment.pricedTokens | join(",")' "$(addr WETH),$(addr CBBTC),$(addr USDC),$(addr EURC)"
 expect '.deployment.feeds | join(",")' "$(addr ETH_USD),$(addr CBBTC_USD),$(addr USDC_USD),$(addr EURC_USD)"
 fast=$(script_constant FAST_MAX_AGE)

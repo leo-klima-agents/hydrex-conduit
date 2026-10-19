@@ -17,7 +17,8 @@ contract DeployTest is Test {
         vm.warp(1_792_400_000);
         d = new Deploy();
         vm.etch(d.VOTER(), hex"00");
-        vm.etch(d.ROUTER(), hex"00");
+        vm.etch(d.KYBER_ROUTER(), hex"00");
+        vm.etch(d.ONEINCH_ROUTER(), hex"00");
         vm.etch(d.VE_TOKEN(), address(new MockVotingEscrow()).code);
         vm.etch(d.WETH(), address(new MockToken(18)).code);
         vm.etch(d.CBBTC(), address(new MockToken(8)).code);
@@ -41,12 +42,14 @@ contract DeployTest is Test {
         assertEq(d.VE_TOKEN(), 0x25B2ED7149fb8A05f6eF9407d9c8F878f59cd1e1);
         assertEq(d.USDC(), 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913);
         assertEq(d.SEQUENCER_FEED(), 0xBCF85224fc0756B9Fa45aA7892530B47e10b6433);
-        assertEq(d.ROUTER(), 0x6131B5fae19EA4f9D964eAc0408E4408b66337b5);
+        assertEq(d.KYBER_ROUTER(), 0x6131B5fae19EA4f9D964eAc0408E4408b66337b5);
+        assertEq(d.ONEINCH_ROUTER(), 0x111111125421cA6dc452d289314280a0f8842A65);
         assertEq(d.SALT(), keccak256("metadex.cafe/ImmutableVeTokenConduit/usdc/v1"));
 
         address[] memory r = d.routers();
-        assertEq(r.length, 1);
+        assertEq(r.length, 2);
         assertEq(r[0], 0x6131B5fae19EA4f9D964eAc0408E4408b66337b5);
+        assertEq(r[1], 0x111111125421cA6dc452d289314280a0f8842A65);
 
         ImmutableVeTokenConduit.PricedToken[] memory p = d.pricedTokens();
         assertEq(p.length, 4);
@@ -128,7 +131,9 @@ contract DeployTest is Test {
         assertEq(c.veToken(), d.VE_TOKEN());
         assertEq(c.usdc(), d.USDC());
         assertEq(c.sequencerFeed(), d.SEQUENCER_FEED());
-        assertEq(c.approvedRouters(0), d.ROUTER());
+        assertEq(c.approvedRouters(0), d.KYBER_ROUTER());
+        assertEq(c.approvedRouters(1), d.ONEINCH_ROUTER());
+        assertTrue(c.isApprovedRouter(d.ONEINCH_ROUTER()));
         assertTrue(MockVotingEscrow(d.VE_TOKEN()).configActive(predicted));
     }
 

@@ -156,7 +156,7 @@ contract SurfaceTest is ConduitTestBase {
         vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.BadRouter.selector, address(router)));
         _deployWith(r, _priced());
 
-        address[12] memory forbidden = [
+        address[11] memory forbidden = [
             address(voter),
             address(ve),
             address(usdc),
@@ -167,8 +167,7 @@ contract SurfaceTest is ConduitTestBase {
             address(ethFeed),
             address(btcFeed),
             address(usdcFeed),
-            address(eurcFeed),
-            address(usdc)
+            address(eurcFeed)
         ];
         r = new address[](1);
         for (uint256 i; i < forbidden.length; ++i) {

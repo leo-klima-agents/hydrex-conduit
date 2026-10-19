@@ -376,19 +376,21 @@ contract ImmutableVeTokenConduit {
         return b / d * x + b % d * x / d;
     }
 
+    /// @dev The claimed USDC, plus the other tokens' Chainlink value in USDC less `MAX_SLIPPAGE_BPS`.
     function _floor(
         Oracle[] memory oracles,
         uint256[] memory answers,
         address[] calldata tokens,
         uint256[] memory amounts
-    ) private view returns (uint256) {
+    ) private view returns (uint256 floor) {
         uint256 usd;
         for (uint256 i; i < tokens.length; ++i) {
             uint256 j = _priced(oracles, answers, tokens[i]);
-            usd += _usd(oracles[j], answers[j], amounts[i]);
+            if (tokens[i] == usdc) floor += amounts[i];
+            else usd += _usd(oracles[j], answers[j], amounts[i]);
         }
         uint256 u = _priced(oracles, answers, usdc);
-        return usd * (10_000 - MAX_SLIPPAGE_BPS) * oracles[u].div / (10_000 * answers[u] * oracles[u].mul);
+        floor += usd * (10_000 - MAX_SLIPPAGE_BPS) * oracles[u].div / (10_000 * answers[u] * oracles[u].mul);
     }
 
     function _priced(Oracle[] memory oracles, uint256[] memory answers, address token)

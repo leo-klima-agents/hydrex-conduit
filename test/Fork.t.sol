@@ -43,6 +43,16 @@ interface IMinter {
     function update_period() external returns (uint256);
 }
 
+interface IAllowance {
+    function allowance(address owner, address spender) external view returns (uint256);
+}
+
+interface IOneInchRouter {
+    function unoswapTo(uint256 to, uint256 token, uint256 amount, uint256 minReturn, uint256 dex)
+        external
+        returns (uint256);
+}
+
 interface IFeed {
     function description() external view returns (string memory);
     function decimals() external view returns (uint8);
@@ -69,7 +79,9 @@ contract ForkTest is Test {
     address internal constant BRIBE_IMPL = 0x6225a2B81F83a71c0595449A224Fc2385DfAA28D;
     address internal constant BRIBE_OWNER = 0x1aE3753d9b60743A89159CcFF8E251C60B560311;
     address internal constant MINTER = 0xA7D64625F45548a19B2A19e28E7546bb2839003E;
-    address internal constant ROUTER = 0x6131B5fae19EA4f9D964eAc0408E4408b66337b5;
+    address internal constant KYBER_ROUTER = 0x6131B5fae19EA4f9D964eAc0408E4408b66337b5;
+    address internal constant ONEINCH_ROUTER = 0x111111125421cA6dc452d289314280a0f8842A65;
+    address internal constant UNISWAP_V3_WETH_USDC = 0xd0b53D9277642d899DF5C87A3966A349A798F224;
     address internal constant TREASURY = 0x450c72de8c0079B49AcedF294a13011bd09D125B;
     address internal constant USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
     address internal constant WETH = 0x4200000000000000000000000000000000000006;
@@ -82,7 +94,10 @@ contract ForkTest is Test {
     bytes32 internal constant VE_IMPL_CODEHASH = 0xe6b54672ba85711eac5516d6ce09fe96cabe9cc3764a178e5d2f33a6241c2b42;
     bytes32 internal constant BEACON_CODEHASH = 0xaaa27093ce9a3136b77cbcbfbee1c26a564b1d2742bc57f916f1cafe5e41f956;
     bytes32 internal constant BRIBE_IMPL_CODEHASH = 0x419b9ff2bbe35af4ba4fb135c4f4a2cc215e0c212196d0b0d5dbf7bb6f301055;
-    bytes32 internal constant ROUTER_CODEHASH = 0x99590941aab8e1eaf2ceb825abf64b6956e82ce41e8966d7e320846905db85e3;
+    bytes32 internal constant KYBER_ROUTER_CODEHASH =
+        0x99590941aab8e1eaf2ceb825abf64b6956e82ce41e8966d7e320846905db85e3;
+    bytes32 internal constant ONEINCH_ROUTER_CODEHASH =
+        0x770b14c4159d028ba8004c2d37bf91cc6111b1270bdf2afa75d4af1b77dbd75f;
     bytes32 internal constant TREASURY_CODEHASH = 0x4e381985ca68b3e5d27b4425fa581c19cf33146d3f887a3cfca96f55528ea46f;
 
     uint256 internal constant TOKEN_ID = 14_247;
@@ -224,9 +239,11 @@ contract ForkTest is Test {
         (, int256 status, uint256 startedAt,,) = IFeed(SEQUENCER_FEED).latestRoundData();
         assertEq(status, 0);
         assertGt(block.timestamp - startedAt, 3600);
-        assertEq(ROUTER.codehash, ROUTER_CODEHASH);
+        assertEq(KYBER_ROUTER.codehash, KYBER_ROUTER_CODEHASH);
+        assertEq(ONEINCH_ROUTER.codehash, ONEINCH_ROUTER_CODEHASH);
         assertEq(TREASURY.codehash, TREASURY_CODEHASH);
-        assertEq(d.ROUTER(), ROUTER);
+        assertEq(d.KYBER_ROUTER(), KYBER_ROUTER);
+        assertEq(d.ONEINCH_ROUTER(), ONEINCH_ROUTER);
     }
 
     function test_pin_deployScript() public {
@@ -428,6 +445,62 @@ contract ForkTest is Test {
             seen = true;
         }
         assertTrue(seen);
+    }
+
+    /// @dev 1inch's `unoswapTo` through the Uniswap V3 WETH/USDC 0.05% pool: protocol 1 (UniswapV3) in the top three
+    /// bits, and bit 247 set because WETH is the pool's token0.
+    function _oneInchSwap(address to, uint256 amount) internal pure returns (ImmutableVeTokenConduit.Swap memory) {
+        uint256 dex = (uint256(1) << 253) | (uint256(1) << 247) | uint256(uint160(UNISWAP_V3_WETH_USDC));
+        return ImmutableVeTokenConduit.Swap(
+            WETH,
+            ONEINCH_ROUTER,
+            abi.encodeCall(IOneInchRouter.unoswapTo, (uint256(uint160(to)), uint256(uint160(WETH)), amount, 1, dex))
+        );
+    }
+
+    function test_claim_strangerThroughOneInch() public {
+        _deploy();
+        _optIn();
+        (
+            address[] memory fees,
+            address[] memory bribes,
+            address[] memory tokens,
+            ImmutableVeTokenConduit.Swap[] memory swaps
+        ) = _strangerClaim();
+        uint256[] memory amounts = fx.readUintArray(".stranger.amounts");
+        swaps[0] = _oneInchSwap(address(conduit), amounts[1]);
+        uint256 floor = conduit.claimFloor(tokens, amounts);
+        uint256 holderBefore = IERC20(USDC).balanceOf(HOLDER);
+        uint256 treasuryBefore = IERC20(USDC).balanceOf(TREASURY);
+
+        vm.prank(stranger);
+        (uint256 out, uint256 fee) = conduit.claim(TOKEN_ID, fees, bribes, tokens, swaps, 0);
+
+        assertGe(out + fee, floor);
+        assertGt(out + fee, amounts[0]);
+        assertEq(fee, (out + fee) / 100);
+        assertEq(IERC20(USDC).balanceOf(HOLDER) - holderBefore, out);
+        assertEq(IERC20(USDC).balanceOf(TREASURY) - treasuryBefore, fee);
+        assertEq(IERC20(WETH).balanceOf(address(conduit)), 0);
+        assertEq(IAllowance(WETH).allowance(address(conduit), ONEINCH_ROUTER), 0);
+    }
+
+    function test_claim_strangerCannotDivertTheSwapBehindUsdcRewards() public {
+        _deploy();
+        _optIn();
+        (
+            address[] memory fees,
+            address[] memory bribes,
+            address[] memory tokens,
+            ImmutableVeTokenConduit.Swap[] memory swaps
+        ) = _strangerClaim();
+        uint256[] memory amounts = fx.readUintArray(".stranger.amounts");
+        uint256 floor = conduit.claimFloor(tokens, amounts);
+        assertGt(amounts[0], 99 * (floor - amounts[0]), "the USDC rewards would cover a diverted swap at 99%");
+        swaps[0] = _oneInchSwap(stranger, amounts[1]);
+        vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.BelowOracleFloor.selector, amounts[0], floor));
+        vm.prank(stranger);
+        conduit.claim(TOKEN_ID, fees, bribes, tokens, swaps, 0);
     }
 
     function test_claim_unswappedRewardReverts() public {

@@ -6,6 +6,7 @@ import {Test} from "forge-std/Test.sol";
 
 import {ImmutableVeTokenConduit} from "../src/ImmutableVeTokenConduit.sol";
 import {MockBribe} from "./mocks/MockBribe.sol";
+import {MockFeed} from "./mocks/MockFeed.sol";
 import {MockRouter, ReentrantRouter} from "./mocks/MockRouter.sol";
 import {MockFalseToken, MockNoReturnToken, MockTokenBase, MockUsdtToken} from "./mocks/MockToken.sol";
 import {MockVoter} from "./mocks/MockVoter.sol";
@@ -134,9 +135,27 @@ contract ClaimTest is ConduitTestBase {
         assertEq(fee, 23.76e6);
     }
 
+    function test_thirdParty_usdcRewardsDoNotCoverADivertedSwap() public {
+        _earn(address(usdc), 10_000e6);
+        _earn(address(weth), 0.04e18);
+        uint256 floor = 10_000e6 + 96e6 * 99 / 100;
+        uint256[] memory amounts = new uint256[](2);
+        amounts[0] = 10_000e6;
+        amounts[1] = 0.04e18;
+        assertEq(conduit.claimFloor(_tokens(address(usdc), address(weth)), amounts), floor);
+
+        ImmutableVeTokenConduit.Swap[] memory s = _swaps(_swap(address(weth), 0.04e18, 96e6, stranger));
+        vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.BelowOracleFloor.selector, 10_000e6, floor));
+        _claim(stranger, _tokens(address(usdc), address(weth)), s, 0);
+
+        s = _swaps(_swap(address(weth), 0.04e18, 96e6 * 99 / 100, address(conduit)));
+        (uint256 out, uint256 fee) = _claim(stranger, _tokens(address(usdc), address(weth)), s, 0);
+        assertEq(out + fee, floor);
+    }
+
     function testFuzz_claimFloor_matchesClaim(uint256 wethAmount, uint256 btcAmount, uint256 usdcAmount) public {
-        wethAmount = bound(wethAmount, 1, 1e24);
-        btcAmount = bound(btcAmount, 1, 1e12);
+        wethAmount = bound(wethAmount, 1e12, 1e24);
+        btcAmount = bound(btcAmount, 1e3, 1e12);
         usdcAmount = bound(usdcAmount, 0, 1e15);
         _earn(address(weth), wethAmount);
         _earn(address(cbbtc), btcAmount);
@@ -150,9 +169,8 @@ contract ClaimTest is ConduitTestBase {
         amounts[1] = btcAmount;
         amounts[2] = usdcAmount;
         uint256 floor = conduit.claimFloor(tokens, amounts);
-        uint256 value = wethAmount * 2400e18 / 1e18 + btcAmount * 80_000e18 / 1e8 + usdcAmount * 1e12;
-        assertApproxEqAbs(floor, value * 99 / 100 / 1e12, 1);
-        vm.assume(floor > usdcAmount);
+        uint256 swapped = wethAmount * 2400e18 / 1e18 + btcAmount * 80_000e18 / 1e8;
+        assertApproxEqAbs(floor, usdcAmount + swapped * 99 / 100 / 1e12, 1);
 
         ImmutableVeTokenConduit.Swap[] memory s = new ImmutableVeTokenConduit.Swap[](2);
         uint256 needed = floor - usdcAmount;
@@ -224,6 +242,33 @@ contract ClaimTest is ConduitTestBase {
         assertEq(out, amount - fee);
         assertEq(usdc.balanceOf(treasury), fee);
         assertEq(usdc.balanceOf(holder), out);
+    }
+
+    function test_swap_eachApprovedRouterCanBeUsed() public {
+        MockRouter second = new MockRouter();
+        address[] memory routers = new address[](2);
+        routers[0] = address(router);
+        routers[1] = address(second);
+        conduit = new ImmutableVeTokenConduit(
+            address(voter), address(ve), address(usdc), address(sequencer), routers, _priced()
+        );
+        assertEq(conduit.approvedRouters(1), address(second));
+        assertTrue(conduit.isApprovedRouter(address(second)));
+        vm.prank(holder);
+        ve.setConduitApproval(address(conduit), TOKEN_ID, true);
+        _earn(address(weth), 1e18);
+        _earn(address(cbbtc), 1e8);
+        ImmutableVeTokenConduit.Swap[] memory s = new ImmutableVeTokenConduit.Swap[](2);
+        s[0] = _swap(address(weth), 1e18, 2400e6, address(conduit));
+        s[1] = ImmutableVeTokenConduit.Swap(
+            address(cbbtc),
+            address(second),
+            abi.encodeCall(MockRouter.swap, (address(cbbtc), 1e8, address(usdc), 80_000e6, address(conduit)))
+        );
+        (uint256 out, uint256 fee) = _claim(stranger, _tokens(address(weth), address(cbbtc)), s, 0);
+        assertEq(out + fee, 82_400e6);
+        assertEq(router.calls(), 1);
+        assertEq(second.calls(), 1);
     }
 
     function test_swap_unswappedRewardReverts() public {
@@ -427,6 +472,9 @@ contract ClaimHandler is Test {
     address internal immutable weth;
     address internal immutable cbbtc;
     address internal immutable usdc;
+    MockFeed internal immutable ethFeed;
+    MockFeed internal immutable btcFeed;
+    MockFeed internal immutable usdcFeed;
     address[] internal callers;
     bool public belowFloor;
     uint256 public thirdPartyClaims;
@@ -436,9 +484,13 @@ contract ClaimHandler is Test {
         router = router_;
         bribe = bribe_;
         owner = owner_;
-        (weth,,,,) = target.pricedTokens(0);
-        (cbbtc,,,,) = target.pricedTokens(1);
-        usdc = target.usdc();
+        address feed;
+        (weth, feed,,,) = target.pricedTokens(0);
+        ethFeed = MockFeed(feed);
+        (cbbtc, feed,,,) = target.pricedTokens(1);
+        btcFeed = MockFeed(feed);
+        (usdc, feed,,,) = target.pricedTokens(2);
+        usdcFeed = MockFeed(feed);
         callers.push(owner_);
         callers.push(address(0xC0FFEE));
         callers.push(address(0xBEEF));
@@ -487,18 +539,24 @@ contract ClaimHandler is Test {
         bribes[0] = address(bribe);
         uint256 ownerBefore = MockTokenBase(usdc).balanceOf(owner);
         vm.prank(caller);
-        try target.claim(TOKEN_ID, new address[](0), bribes, tokens, s, 0) returns (uint256 out, uint256) {
+        try target.claim(TOKEN_ID, new address[](0), bribes, tokens, s, 0) returns (uint256 out, uint256 fee) {
             uint256 direct = sink == owner && amounts[0] != 0 ? pay / 2 : 0;
             uint256 paid = MockTokenBase(usdc).balanceOf(owner) - ownerBefore;
             if (paid != out + direct) belowFloor = true;
             if (caller != owner) {
                 ++thirdPartyClaims;
-                if (out < floor - floor * target.FEE_BPS() / 10_000) belowFloor = true;
+                if (out + fee + 1 < _expectedFloor(amounts)) belowFloor = true;
             }
         } catch {}
         for (uint256 i; i < 3; ++i) {
             bribe.setEarned(TOKEN_ID, tokens[i], 0);
         }
+    }
+
+    /// @dev The claimed USDC plus 99% of the WETH and cbBTC, at the mock feeds' prices.
+    function _expectedFloor(uint256[] memory amounts) internal view returns (uint256) {
+        uint256 swappedUsd = amounts[0] * uint256(ethFeed.answer()) / 1e8 + amounts[1] * uint256(btcFeed.answer()) * 100;
+        return amounts[2] + swappedUsd * 99 / 100 / (uint256(usdcFeed.answer()) * 1e4);
     }
 }
 
