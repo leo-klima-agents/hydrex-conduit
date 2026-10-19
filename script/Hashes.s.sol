@@ -11,9 +11,8 @@ contract Hashes is Deploy {
         require(block.chainid == 8453, "run with --fork-url pointing at Base");
         predicted = predict();
         string memory artifact = vm.readFile("out/ImmutableVeTokenConduit.sol/ImmutableVeTokenConduit.json");
-        ImmutableVeTokenConduit local = new ImmutableVeTokenConduit{salt: keccak256("Hashes")}(
-            VOTER, VE_TOKEN, USDC, SEQUENCER_FEED, routers(), pricedTokens()
-        );
+        ImmutableVeTokenConduit local =
+            new ImmutableVeTokenConduit{salt: keccak256("Hashes")}(VOTER, VE_TOKEN, SEQUENCER_FEED, pricedTokens());
 
         ImmutableVeTokenConduit.PricedToken[] memory p = pricedTokens();
         address[] memory tokens = new address[](p.length);
@@ -28,9 +27,7 @@ contract Hashes is Deploy {
         string memory dep = "deployment";
         string memory depJson = vm.serializeAddress(dep, "voter", VOTER);
         depJson = vm.serializeAddress(dep, "veToken", VE_TOKEN);
-        depJson = vm.serializeAddress(dep, "usdc", USDC);
         depJson = vm.serializeAddress(dep, "sequencerFeed", SEQUENCER_FEED);
-        depJson = vm.serializeAddress(dep, "routers", routers());
         depJson = vm.serializeAddress(dep, "pricedTokens", tokens);
         depJson = vm.serializeAddress(dep, "feeds", feeds);
         depJson = vm.serializeUint(dep, "maxAges", maxAges);

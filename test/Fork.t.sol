@@ -43,14 +43,8 @@ interface IMinter {
     function update_period() external returns (uint256);
 }
 
-interface IAllowance {
-    function allowance(address owner, address spender) external view returns (uint256);
-}
-
-interface IOneInchRouter {
-    function unoswapTo(uint256 to, uint256 token, uint256 amount, uint256 minReturn, uint256 dex)
-        external
-        returns (uint256);
+interface IApprove {
+    function approve(address spender, uint256 amount) external returns (bool);
 }
 
 interface IFeed {
@@ -79,9 +73,6 @@ contract ForkTest is Test {
     address internal constant BRIBE_IMPL = 0x6225a2B81F83a71c0595449A224Fc2385DfAA28D;
     address internal constant BRIBE_OWNER = 0x1aE3753d9b60743A89159CcFF8E251C60B560311;
     address internal constant MINTER = 0xA7D64625F45548a19B2A19e28E7546bb2839003E;
-    address internal constant KYBER_ROUTER = 0x6131B5fae19EA4f9D964eAc0408E4408b66337b5;
-    address internal constant ONEINCH_ROUTER = 0x111111125421cA6dc452d289314280a0f8842A65;
-    address internal constant UNISWAP_V3_WETH_USDC = 0xd0b53D9277642d899DF5C87A3966A349A798F224;
     address internal constant TREASURY = 0x450c72de8c0079B49AcedF294a13011bd09D125B;
     address internal constant USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
     address internal constant WETH = 0x4200000000000000000000000000000000000006;
@@ -94,10 +85,6 @@ contract ForkTest is Test {
     bytes32 internal constant VE_IMPL_CODEHASH = 0xe6b54672ba85711eac5516d6ce09fe96cabe9cc3764a178e5d2f33a6241c2b42;
     bytes32 internal constant BEACON_CODEHASH = 0xaaa27093ce9a3136b77cbcbfbee1c26a564b1d2742bc57f916f1cafe5e41f956;
     bytes32 internal constant BRIBE_IMPL_CODEHASH = 0x419b9ff2bbe35af4ba4fb135c4f4a2cc215e0c212196d0b0d5dbf7bb6f301055;
-    bytes32 internal constant KYBER_ROUTER_CODEHASH =
-        0x99590941aab8e1eaf2ceb825abf64b6956e82ce41e8966d7e320846905db85e3;
-    bytes32 internal constant ONEINCH_ROUTER_CODEHASH =
-        0x770b14c4159d028ba8004c2d37bf91cc6111b1270bdf2afa75d4af1b77dbd75f;
     bytes32 internal constant TREASURY_CODEHASH = 0x4e381985ca68b3e5d27b4425fa581c19cf33146d3f887a3cfca96f55528ea46f;
 
     uint256 internal constant TOKEN_ID = 14_247;
@@ -119,9 +106,7 @@ contract ForkTest is Test {
     }
 
     function _deploy() internal {
-        address at = fx.readAddress(".conduit");
-        deployCodeTo("ImmutableVeTokenConduit.sol:ImmutableVeTokenConduit", d.constructorArgs(), at);
-        conduit = ImmutableVeTokenConduit(at);
+        conduit = ImmutableVeTokenConduit(d.run());
     }
 
     function _optIn() internal {
@@ -159,7 +144,7 @@ contract ForkTest is Test {
     function _notify(address bribe, address token, uint256 amount) internal {
         deal(token, briber, amount);
         vm.startPrank(briber);
-        IERC20(token).approve(bribe, amount);
+        IApprove(token).approve(bribe, amount);
         IBribeExtra(bribe).notifyRewardAmount(token, amount);
         vm.stopPrank();
     }
@@ -224,7 +209,7 @@ contract ForkTest is Test {
         assertGt(IVoterExtra(VOTER).weightsAt(pool, epoch), 0);
     }
 
-    function test_pin_feedsRouterTreasury() public view {
+    function test_pin_feedsAndTreasury() public view {
         string[4] memory descriptions = ["ETH / USD", "cbBTC / USD", "USDC / USD", "EURC / USD"];
         ImmutableVeTokenConduit.PricedToken[] memory p = d.pricedTokens();
         uint256[] memory answers = fx.readUintArray(".answers");
@@ -239,11 +224,7 @@ contract ForkTest is Test {
         (, int256 status, uint256 startedAt,,) = IFeed(SEQUENCER_FEED).latestRoundData();
         assertEq(status, 0);
         assertGt(block.timestamp - startedAt, 3600);
-        assertEq(KYBER_ROUTER.codehash, KYBER_ROUTER_CODEHASH);
-        assertEq(ONEINCH_ROUTER.codehash, ONEINCH_ROUTER_CODEHASH);
         assertEq(TREASURY.codehash, TREASURY_CODEHASH);
-        assertEq(d.KYBER_ROUTER(), KYBER_ROUTER);
-        assertEq(d.ONEINCH_ROUTER(), ONEINCH_ROUTER);
     }
 
     function test_pin_deployScript() public {
@@ -379,56 +360,60 @@ contract ForkTest is Test {
         assertEq(IVoter(VOTER).votes(address(conduit), current[0]), 0);
     }
 
-    function _strangerClaim()
+    function _claimArgs()
         internal
         view
-        returns (
-            address[] memory fees,
-            address[] memory bribes,
-            address[] memory tokens,
-            ImmutableVeTokenConduit.Swap[] memory swaps
-        )
+        returns (address[] memory fees, address[] memory bribes, address[] memory tokens, uint256[] memory amounts)
     {
-        fees = fx.readAddressArray(".stranger.fees");
-        bribes = fx.readAddressArray(".stranger.bribes");
-        tokens = fx.readAddressArray(".stranger.tokens");
-        swaps = new ImmutableVeTokenConduit.Swap[](1);
-        swaps[0] = ImmutableVeTokenConduit.Swap(
-            WETH, fx.readAddress(".stranger.route.router"), fx.readBytes(".stranger.route.data")
-        );
+        fees = fx.readAddressArray(".claim.fees");
+        bribes = fx.readAddressArray(".claim.bribes");
+        tokens = fx.readAddressArray(".claim.tokens");
+        amounts = fx.readUintArray(".claim.amounts");
+        assertEq(tokens[0], USDC);
+        assertEq(tokens[1], WETH);
+        assertEq(tokens[2], HYDX);
+    }
+
+    function _balances(address[] memory tokens, address account) internal view returns (uint256[] memory b) {
+        b = new uint256[](tokens.length);
+        for (uint256 i; i < tokens.length; ++i) {
+            b[i] = IERC20(tokens[i]).balanceOf(account);
+        }
+    }
+
+    function _assertSplit(
+        address[] memory tokens,
+        uint256[] memory amounts,
+        uint256[] memory holderBefore,
+        uint256[] memory treasuryBefore
+    ) internal view {
+        uint256[] memory holderAfter = _balances(tokens, HOLDER);
+        uint256[] memory treasuryAfter = _balances(tokens, TREASURY);
+        for (uint256 i; i < tokens.length; ++i) {
+            assertGt(amounts[i], 100);
+            assertEq(treasuryAfter[i] - treasuryBefore[i], amounts[i] / 100);
+            assertEq(holderAfter[i] - holderBefore[i], amounts[i] - amounts[i] / 100);
+            assertEq(IERC20(tokens[i]).balanceOf(address(conduit)), 0);
+        }
     }
 
     function test_claim_strangerPaysOwnerAndTreasury() public {
         _deploy();
         _optIn();
-        (
-            address[] memory fees,
-            address[] memory bribes,
-            address[] memory tokens,
-            ImmutableVeTokenConduit.Swap[] memory swaps
-        ) = _strangerClaim();
-        assertEq(tokens[0], USDC);
-        assertEq(tokens[1], WETH);
-        uint256[] memory amounts = fx.readUintArray(".stranger.amounts");
-        uint256 floor = conduit.claimFloor(tokens, amounts);
-        uint256 holderBefore = IERC20(USDC).balanceOf(HOLDER);
-        uint256 treasuryBefore = IERC20(USDC).balanceOf(TREASURY);
+        (address[] memory fees, address[] memory bribes, address[] memory tokens, uint256[] memory amounts) =
+            _claimArgs();
+        uint256[] memory holderBefore = _balances(tokens, HOLDER);
+        uint256[] memory treasuryBefore = _balances(tokens, TREASURY);
 
         vm.recordLogs();
         vm.prank(stranger);
-        (uint256 out, uint256 fee) = conduit.claim(TOKEN_ID, fees, bribes, tokens, swaps, 0);
+        assertEq(conduit.claim(TOKEN_ID, fees, bribes, tokens), amounts);
 
-        uint256 received = out + fee;
-        assertGe(received, floor);
-        assertGe(received, amounts[0] + fx.readUint(".stranger.route.amountOut") * 995 / 1000);
-        assertEq(fee, received / 100);
-        assertEq(IERC20(USDC).balanceOf(HOLDER) - holderBefore, out);
-        assertEq(IERC20(USDC).balanceOf(TREASURY) - treasuryBefore, fee);
-        assertEq(IERC20(USDC).balanceOf(stranger), 0);
-        assertEq(IERC20(WETH).balanceOf(stranger), 0);
-        assertEq(IERC20(USDC).balanceOf(address(conduit)), 0);
-        assertEq(IERC20(WETH).balanceOf(address(conduit)), 0);
-
+        _assertSplit(tokens, amounts, holderBefore, treasuryBefore);
+        uint256[] memory strangerAfter = _balances(tokens, stranger);
+        for (uint256 i; i < tokens.length; ++i) {
+            assertEq(strangerAfter[i], 0);
+        }
         Vm.Log[] memory logs = vm.getRecordedLogs();
         bool seen;
         for (uint256 i; i < logs.length; ++i) {
@@ -437,143 +422,54 @@ contract ForkTest is Test {
             assertEq(uint256(logs[i].topics[1]), TOKEN_ID);
             assertEq(address(uint160(uint256(logs[i].topics[2]))), HOLDER);
             assertEq(address(uint160(uint256(logs[i].topics[3]))), stranger);
-            (, uint256[] memory claimed, uint256 usdcReceived, uint256 loggedFee) =
-                abi.decode(logs[i].data, (address[], uint256[], uint256, uint256));
-            assertEq(claimed, amounts);
-            assertEq(usdcReceived, received);
-            assertEq(loggedFee, fee);
+            (address[] memory loggedTokens, uint256[] memory loggedAmounts, uint256[] memory loggedFees) =
+                abi.decode(logs[i].data, (address[], uint256[], uint256[]));
+            assertEq(loggedTokens, tokens);
+            assertEq(loggedAmounts, amounts);
+            for (uint256 j; j < tokens.length; ++j) {
+                assertEq(loggedFees[j], amounts[j] / 100);
+            }
             seen = true;
         }
         assertTrue(seen);
     }
 
-    /// @dev 1inch's `unoswapTo` through the Uniswap V3 WETH/USDC 0.05% pool: protocol 1 (UniswapV3) in the top three
-    /// bits, and bit 247 set because WETH is the pool's token0.
-    function _oneInchSwap(address to, uint256 amount) internal pure returns (ImmutableVeTokenConduit.Swap memory) {
-        uint256 dex = (uint256(1) << 253) | (uint256(1) << 247) | uint256(uint160(UNISWAP_V3_WETH_USDC));
-        return ImmutableVeTokenConduit.Swap(
-            WETH,
-            ONEINCH_ROUTER,
-            abi.encodeCall(IOneInchRouter.unoswapTo, (uint256(uint160(to)), uint256(uint160(WETH)), amount, 1, dex))
-        );
-    }
-
-    function test_claim_strangerThroughOneInch() public {
+    function test_claim_ownerPaysTheSameFee() public {
         _deploy();
         _optIn();
-        (
-            address[] memory fees,
-            address[] memory bribes,
-            address[] memory tokens,
-            ImmutableVeTokenConduit.Swap[] memory swaps
-        ) = _strangerClaim();
-        uint256[] memory amounts = fx.readUintArray(".stranger.amounts");
-        swaps[0] = _oneInchSwap(address(conduit), amounts[1]);
-        uint256 floor = conduit.claimFloor(tokens, amounts);
-        uint256 holderBefore = IERC20(USDC).balanceOf(HOLDER);
-        uint256 treasuryBefore = IERC20(USDC).balanceOf(TREASURY);
-
-        vm.prank(stranger);
-        (uint256 out, uint256 fee) = conduit.claim(TOKEN_ID, fees, bribes, tokens, swaps, 0);
-
-        assertGe(out + fee, floor);
-        assertGt(out + fee, amounts[0]);
-        assertEq(fee, (out + fee) / 100);
-        assertEq(IERC20(USDC).balanceOf(HOLDER) - holderBefore, out);
-        assertEq(IERC20(USDC).balanceOf(TREASURY) - treasuryBefore, fee);
-        assertEq(IERC20(WETH).balanceOf(address(conduit)), 0);
-        assertEq(IAllowance(WETH).allowance(address(conduit), ONEINCH_ROUTER), 0);
-    }
-
-    function test_claim_strangerCannotDivertTheSwapBehindUsdcRewards() public {
-        _deploy();
-        _optIn();
-        (
-            address[] memory fees,
-            address[] memory bribes,
-            address[] memory tokens,
-            ImmutableVeTokenConduit.Swap[] memory swaps
-        ) = _strangerClaim();
-        uint256[] memory amounts = fx.readUintArray(".stranger.amounts");
-        uint256 floor = conduit.claimFloor(tokens, amounts);
-        assertGt(amounts[0], 99 * (floor - amounts[0]), "the USDC rewards would cover a diverted swap at 99%");
-        swaps[0] = _oneInchSwap(stranger, amounts[1]);
-        vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.BelowOracleFloor.selector, amounts[0], floor));
-        vm.prank(stranger);
-        conduit.claim(TOKEN_ID, fees, bribes, tokens, swaps, 0);
-    }
-
-    function test_claim_unswappedRewardReverts() public {
-        _deploy();
-        _optIn();
-        (
-            address[] memory fees,
-            address[] memory bribes,
-            address[] memory tokens,
-            ImmutableVeTokenConduit.Swap[] memory swaps
-        ) = _strangerClaim();
-        swaps = new ImmutableVeTokenConduit.Swap[](0);
-        tokens = new address[](1);
-        tokens[0] = WETH;
-        vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.RewardNotSwapped.selector, WETH));
-        vm.prank(stranger);
-        conduit.claim(TOKEN_ID, fees, bribes, tokens, swaps, 0);
+        (address[] memory fees, address[] memory bribes, address[] memory tokens, uint256[] memory amounts) =
+            _claimArgs();
+        uint256[] memory holderBefore = _balances(tokens, HOLDER);
+        uint256[] memory treasuryBefore = _balances(tokens, TREASURY);
+        vm.prank(HOLDER);
+        conduit.claim(TOKEN_ID, fees, bribes, tokens);
+        _assertSplit(tokens, amounts, holderBefore, treasuryBefore);
     }
 
     function test_claim_requiresOptIn() public {
         _deploy();
-        (
-            address[] memory fees,
-            address[] memory bribes,
-            address[] memory tokens,
-            ImmutableVeTokenConduit.Swap[] memory swaps
-        ) = _strangerClaim();
+        (address[] memory fees, address[] memory bribes, address[] memory tokens,) = _claimArgs();
         vm.expectRevert(abi.encodeWithSignature("NotApprovedOrOwner()"));
         vm.prank(stranger);
-        conduit.claim(TOKEN_ID, fees, bribes, tokens, swaps, 0);
-    }
-
-    function test_claim_ownerClaimsUnpricedToken() public {
-        _deploy();
-        _optIn();
-        address[] memory fees = fx.readAddressArray(".owner.fees");
-        address[] memory bribes = fx.readAddressArray(".owner.bribes");
-        address[] memory tokens = fx.readAddressArray(".owner.tokens");
-        assertEq(tokens[0], HYDX);
-        ImmutableVeTokenConduit.Swap[] memory swaps = new ImmutableVeTokenConduit.Swap[](1);
-        swaps[0] = ImmutableVeTokenConduit.Swap(
-            HYDX, fx.readAddress(".owner.route.router"), fx.readBytes(".owner.route.data")
-        );
-        uint256 minOut = fx.readUint(".owner.route.amountOut") * 995 / 1000 * 99 / 100;
-
-        vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.UnpricedToken.selector, HYDX));
-        vm.prank(stranger);
-        conduit.claim(TOKEN_ID, fees, bribes, tokens, swaps, 0);
-
-        uint256 holderBefore = IERC20(USDC).balanceOf(HOLDER);
-        uint256 treasuryBefore = IERC20(USDC).balanceOf(TREASURY);
-        vm.prank(HOLDER);
-        (uint256 out, uint256 fee) = conduit.claim(TOKEN_ID, fees, bribes, tokens, swaps, minOut);
-        assertGe(out, minOut);
-        assertEq(fee, (out + fee) / 100);
-        assertEq(IERC20(USDC).balanceOf(HOLDER) - holderBefore, out);
-        assertEq(IERC20(USDC).balanceOf(TREASURY) - treasuryBefore, fee);
-        assertEq(IERC20(HYDX).balanceOf(address(conduit)), 0);
+        conduit.claim(TOKEN_ID, fees, bribes, tokens);
     }
 
     function test_claim_ownerCanBypassTheConduit() public {
         _deploy();
         _optIn();
-        (address[] memory fees, address[] memory bribes,,) = _strangerClaim();
-        address[] memory tokens = new address[](1);
-        tokens[0] = USDC;
-        uint256 holderBefore = IERC20(USDC).balanceOf(HOLDER);
-        uint256 treasuryBefore = IERC20(USDC).balanceOf(TREASURY);
+        (address[] memory fees, address[] memory bribes, address[] memory tokens, uint256[] memory amounts) =
+            _claimArgs();
+        uint256[] memory holderBefore = _balances(tokens, HOLDER);
+        uint256[] memory treasuryBefore = _balances(tokens, TREASURY);
         vm.startPrank(HOLDER);
         IVoter(VOTER).claimFeesToRecipientByTokenId(fees, _repeat(tokens, fees.length), TOKEN_ID, HOLDER);
         IVoter(VOTER).claimBribesToRecipientByTokenId(bribes, _repeat(tokens, bribes.length), TOKEN_ID, HOLDER);
         vm.stopPrank();
-        assertEq(IERC20(USDC).balanceOf(HOLDER) - holderBefore, fx.readUintArray(".stranger.amounts")[0]);
-        assertEq(IERC20(USDC).balanceOf(TREASURY), treasuryBefore);
+        uint256[] memory holderAfter = _balances(tokens, HOLDER);
+        uint256[] memory treasuryAfter = _balances(tokens, TREASURY);
+        for (uint256 i; i < tokens.length; ++i) {
+            assertEq(holderAfter[i] - holderBefore[i], amounts[i]);
+            assertEq(treasuryAfter[i], treasuryBefore[i]);
+        }
     }
 }

@@ -19,7 +19,7 @@ contract SelectorsTest is Test {
     }
 
     function _pins() internal pure returns (Pin[] memory p) {
-        p = new Pin[](22);
+        p = new Pin[](21);
         p[0] = Pin(IVoter.vote.selector, 0x6f816a20, "vote(address[],uint256[])");
         p[1] = Pin(IVoter._epochTimestamp.selector, 0xf8803bb6, "_epochTimestamp()");
         p[2] = Pin(IVoter.weights.selector, 0xa7cac846, "weights(address)");
@@ -49,9 +49,8 @@ contract SelectorsTest is Test {
         p[16] = Pin(IBribe.rewardData.selector, 0x38174862, "rewardData(address,uint256)");
         p[17] = Pin(IERC20.balanceOf.selector, 0x70a08231, "balanceOf(address)");
         p[18] = Pin(IERC20.transfer.selector, 0xa9059cbb, "transfer(address,uint256)");
-        p[19] = Pin(IERC20.approve.selector, 0x095ea7b3, "approve(address,uint256)");
-        p[20] = Pin(IERC20.decimals.selector, 0x313ce567, "decimals()");
-        p[21] = Pin(IAggregatorV3.latestRoundData.selector, 0xfeaf968c, "latestRoundData()");
+        p[19] = Pin(IERC20.decimals.selector, 0x313ce567, "decimals()");
+        p[20] = Pin(IAggregatorV3.latestRoundData.selector, 0xfeaf968c, "latestRoundData()");
     }
 
     function test_selectors_literals() public pure {

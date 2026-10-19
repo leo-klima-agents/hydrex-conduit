@@ -30,12 +30,11 @@ runs = 1_000
 [fmt]
 ignore = ["./test/upstream/**"]
 
-# Lints that fire on src/ by design: loops over pools, bribes, tokens and swaps make calls and revert; epochs and
-# feed ages compare timestamps; vote and claim hold a lock; tuples from Chainlink and bribes are read in part;
-# accumulators start at zero; and a claim requires balances to return exactly to where they were.
+# Lints that fire on src/ by design: loops over pools, bribes and tokens make calls and revert; epochs and feed ages
+# compare timestamps; vote and claim hold a lock; tuples from Chainlink and bribes are read in part; and accumulators
+# start at zero.
 [profile.strict.lint]
 exclude_lints = [
-  "inline-assembly",
   "calls-loop",
   "require-revert-in-loop",
   "block-timestamp",
@@ -43,13 +42,11 @@ exclude_lints = [
   "reentrancy-events",
   "unused-return",
   "uninitialized-local",
-  "incorrect-strict-equality",
 ]
 
 [lint]
 ignore = ["test/upstream/**"]
 exclude_lints = [
-  "inline-assembly",
   "calls-loop",
   "require-revert-in-loop",
   "block-timestamp",
@@ -57,6 +54,5 @@ exclude_lints = [
   "reentrancy-events",
   "unused-return",
   "uninitialized-local",
-  "incorrect-strict-equality",
   "environment-read-across-mutation",
 ]

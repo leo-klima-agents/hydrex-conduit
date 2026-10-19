@@ -43,9 +43,7 @@ script_constant() { grep -oE "constant $1 = [0-9a-fA-Fx_]+;" "$SCRIPT" | sed -E 
 addr() { cast to-check-sum-address "$(script_constant "$1")"; }
 expect .deployment.voter "$(addr VOTER)"
 expect .deployment.veToken "$(addr VE_TOKEN)"
-expect .deployment.usdc "$(addr USDC)"
 expect .deployment.sequencerFeed "$(addr SEQUENCER_FEED)"
-expect '.deployment.routers | join(",")' "$(addr KYBER_ROUTER),$(addr ONEINCH_ROUTER)"
 expect '.deployment.pricedTokens | join(",")' "$(addr WETH),$(addr CBBTC),$(addr USDC),$(addr EURC)"
 expect '.deployment.feeds | join(",")' "$(addr ETH_USD),$(addr CBBTC_USD),$(addr USDC_USD),$(addr EURC_USD)"
 fast=$(script_constant FAST_MAX_AGE)
@@ -55,10 +53,9 @@ expect .saltPreimage "$(grep -oE 'SALT_PREIMAGE = "[^"]+"' "$SCRIPT" | cut -d'"'
 expect .salt "$(cast keccak "$(jq -r .saltPreimage "$HASHES")")"
 
 priced=$(jq -r '.deployment | [.pricedTokens, .feeds, .maxAges] | transpose | map("(" + (map(tostring) | join(",")) + ")") | join(",")' "$HASHES")
-args=$(cast abi-encode 'constructor(address,address,address,address,address[],(address,address,uint256)[])' \
+args=$(cast abi-encode 'constructor(address,address,address,(address,address,uint256)[])' \
   "$(jq -r .deployment.voter "$HASHES")" "$(jq -r .deployment.veToken "$HASHES")" \
-  "$(jq -r .deployment.usdc "$HASHES")" "$(jq -r .deployment.sequencerFeed "$HASHES")" \
-  "[$(jq -r '.deployment.routers | join(",")' "$HASHES")]" "[$priced]")
+  "$(jq -r .deployment.sequencerFeed "$HASHES")" "[$priced]")
 expect .deployment.constructorArgs "$args"
 expect .deployment.address "$(cast create2 --deployer "$(jq -r .create2Deployer "$HASHES")" --salt "$(jq -r .salt "$HASHES")" --init-code "${creation}${args#0x}" | grep -oE '0x[0-9a-fA-F]{40}' | head -n1)"
 

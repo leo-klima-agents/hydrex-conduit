@@ -6,8 +6,7 @@
 Usage: BASE_RPC_URL=<archive rpc> test/fixtures/generate.py [block]
 
 It records what test/Fork.t.sol replays: the epoch's whitelisted rewards and other voters' weights on the best
-pools, the water-filling allocation over them and its expected score, token 14247's claimable rewards, and
-KyberSwap routes for the claimed WETH and HYDX that pay the fork test's conduit address.
+pools, the water-filling allocation over them and its expected score, and token 14247's claimable rewards.
 """
 
 import json
@@ -18,13 +17,11 @@ import time
 import urllib.request
 
 RPC = os.environ["BASE_RPC_URL"]
-KYBER = "https://aggregator-api.kyberswap.com/base/api/v1"
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fork.json")
 
 VOTER = "0xc69E3eF39E3fFBcE2A1c570f8d3ADF76909ef17b"
 VE = "0x25B2ED7149fb8A05f6eF9407d9c8F878f59cd1e1"
 KLIMA_CONDUIT = "0xdE91885cF35ac57DF0c4A75c16862127dBe8317c"
-CONDUIT = "0x00000000000000000000000000000000c0De5eEd"
 TOKEN_ID = 14247
 WEEK = 604800
 MAX_POOLS = 20
@@ -44,10 +41,13 @@ PRICED = [
 def rpc(batch):
     out = []
     for i in range(0, len(batch), 40):
-        time.sleep(1)
         chunk = [{"jsonrpc": "2.0", "id": j, "method": m, "params": p} for j, (m, p) in enumerate(batch[i : i + 40])]
-        req = urllib.request.Request(RPC, json.dumps(chunk).encode(), {"content-type": "application/json"})
-        res = sorted(json.load(urllib.request.urlopen(req)), key=lambda r: r["id"])
+        for attempt in range(5):
+            time.sleep(1 + 2 * attempt)
+            req = urllib.request.Request(RPC, json.dumps(chunk).encode(), {"content-type": "application/json"})
+            res = sorted(json.load(urllib.request.urlopen(req)), key=lambda r: r["id"])
+            if not any("limit" in r.get("error", {}).get("message", "") for r in res):
+                break
         for r in res:
             if "error" in r:
                 raise RuntimeError(r["error"])
@@ -85,42 +85,24 @@ def waterfill(values, others, power):
     return [max(0.0, math.sqrt(b * v / hi) - v) for b, v in zip(values, others)]
 
 
-def kyber(token_in, amount_in, deadline):
-    q = f"{KYBER}/routes?tokenIn={token_in}&tokenOut={USDC}&amountIn={amount_in}&excludeRFQSources=true"
-    hdr = {"x-client-id": "hydrex-conduit-tests", "content-type": "application/json", "user-agent": "hydrex-conduit"}
-    summary = json.load(urllib.request.urlopen(urllib.request.Request(q, headers=hdr)))["data"]["routeSummary"]
-    body = {"routeSummary": summary, "sender": CONDUIT, "recipient": CONDUIT, "slippageTolerance": 50, "deadline": deadline}
-    req = urllib.request.Request(f"{KYBER}/route/build", json.dumps(body).encode(), hdr)
-    built = json.load(urllib.request.urlopen(req))["data"]
-    assert int(built["amountIn"]) == amount_in
-    return {"router": built["routerAddress"], "data": built["data"], "amountOut": str(built["amountOut"])}
-
-
 def main():
     latest = int(rpc([("eth_blockNumber", [])])[0], 16)
     block = int(sys.argv[1]) if len(sys.argv) > 1 else latest - 2
     timestamp = int(rpc([("eth_getBlockByNumber", [hex(block), False])])[0]["timestamp"], 16)
-    assert rpc([("eth_getCode", [CONDUIT, hex(block)])])[0] == "0x"
 
     (klima_n,) = calls(block, [(VOTER, "0x8daeaa5a", [KLIMA_CONDUIT])])[0]
     kpools = [addr(r[0]) for r in calls(block, [(VOTER, "0xc48f5af4", [KLIMA_CONDUIT, i]) for i in range(klima_n)])]
     kg = [addr(r[0]) for r in calls(block, [(VOTER, "0xb9a09fd5", [p]) for p in kpools])]
     kext = [addr(r[0]) for r in calls(block, [(VOTER, "0xae21c4cb", [g]) for g in kg])]
     kint = [addr(r[0]) for r in calls(block, [(VOTER, "0xeae40f26", [g]) for g in kg])]
-    claim = {}
-    for name, tokens in (("stranger", [USDC, WETH]), ("owner", [HYDX])):
-        e = {
-            t: [r[0] for r in calls(block, [(b, "0xe39c08fc", [TOKEN_ID, t]) for b in kext + kint])] for t in tokens
-        }
-        claim[name] = {
-            "bribes": [b for i, b in enumerate(kext) if any(e[t][i] for t in tokens)],
-            "fees": [b for i, b in enumerate(kint) if any(e[t][len(kext) + i] for t in tokens)],
-            "amounts": [str(sum(e[t])) for t in tokens],
-            "tokens": tokens,
-        }
-    deadline = timestamp + 365 * 86400
-    claim["stranger"]["route"] = kyber(WETH, int(claim["stranger"]["amounts"][1]), deadline)
-    claim["owner"]["route"] = kyber(HYDX, int(claim["owner"]["amounts"][0]), deadline)
+    tokens = [USDC, WETH, HYDX]
+    e = {t: [r[0] for r in calls(block, [(b, "0xe39c08fc", [TOKEN_ID, t]) for b in kext + kint])] for t in tokens}
+    claim = {
+        "bribes": [b for i, b in enumerate(kext) if any(e[t][i] for t in tokens)],
+        "fees": [b for i, b in enumerate(kint) if any(e[t][len(kext) + i] for t in tokens)],
+        "tokens": tokens,
+        "amounts": [str(sum(e[t])) for t in tokens],
+    }
 
     (epoch,), (n,) = calls(block, [(VOTER, "0xf8803bb6", []), (VOTER, "0x1f7b6d32", [])])
     (power,) = calls(block, [(VE, "0xe0514aba", [TOKEN_ID, epoch + WEEK])])[0]
@@ -171,7 +153,6 @@ def main():
         "block": block,
         "timestamp": timestamp,
         "epoch": epoch,
-        "conduit": CONDUIT,
         "power": str(power),
         "answers": [str(a) for a in answers],
         "market": {
@@ -186,9 +167,7 @@ def main():
             "amounts": [str(d[2]) for k in chosen for d in deposits[k]],
         },
         "gasPools": [live[k][0] for k in gas],
-        "stranger": claim["stranger"],
-        "owner": claim["owner"],
-        "generatedAt": int(time.time()),
+        "claim": claim,
     }
     with open(OUT, "w") as f:
         json.dump(fixture, f, indent=2)

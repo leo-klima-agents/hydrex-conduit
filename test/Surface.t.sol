@@ -46,7 +46,6 @@ contract SurfaceTest is ConduitTestBase {
         assertTrue(vm.contains(md, "| `FEE_BPS` | `100` |"));
         assertEq(conduit.MAX_POOLS(), 20);
         assertEq(conduit.MIN_GAIN(), 1e18);
-        assertEq(conduit.MAX_SLIPPAGE_BPS(), 100);
         assertEq(conduit.SEQUENCER_GRACE(), 3600);
         assertEq(conduit.WEEK(), 604800);
     }
@@ -54,11 +53,7 @@ contract SurfaceTest is ConduitTestBase {
     function test_constructor_storesConfiguration() public view {
         assertEq(conduit.voter(), address(voter));
         assertEq(conduit.veToken(), address(ve));
-        assertEq(conduit.usdc(), address(usdc));
         assertEq(conduit.sequencerFeed(), address(sequencer));
-        assertEq(conduit.approvedRouters(0), address(router));
-        assertTrue(conduit.isApprovedRouter(address(router)));
-        assertFalse(conduit.isApprovedRouter(address(voter)));
         (address token,,,,) = conduit.pricedTokens(3);
         assertEq(token, address(eurc));
     }
@@ -92,18 +87,10 @@ contract SurfaceTest is ConduitTestBase {
         conduit.score(pools, weights);
         conduit.currentScore();
         conduit.poolValue(pool);
-        conduit.claimFloor(_tokens(address(weth)), new uint256[](1));
         conduit.pricedTokens(0);
-        conduit.approvedRouters(0);
-        conduit.isApprovedRouter(address(router));
         vm.prank(stranger);
         conduit.vote(pools, weights);
-        _claim(
-            stranger,
-            _tokens(address(weth), address(usdc)),
-            _swaps(_swap(address(weth), 1e18, 2400e6, address(conduit))),
-            0
-        );
+        _claim(stranger, _tokens(address(weth), address(usdc)));
         Vm.AccountAccess[] memory accesses = vm.stopAndReturnStateDiff();
 
         uint256 reads;
@@ -120,106 +107,72 @@ contract SurfaceTest is ConduitTestBase {
     }
 
     function test_constructor_revertsOnZeroAddresses() public {
-        address[4] memory core = [address(voter), address(ve), address(usdc), address(sequencer)];
-        for (uint256 i; i < 4; ++i) {
-            address[4] memory a = core;
+        address[3] memory core = [address(voter), address(ve), address(sequencer)];
+        for (uint256 i; i < 3; ++i) {
+            address[3] memory a = core;
             a[i] = address(0);
             vm.expectRevert(ImmutableVeTokenConduit.ZeroAddress.selector);
-            new ImmutableVeTokenConduit(a[0], a[1], a[2], a[3], _routers(), _priced());
+            new ImmutableVeTokenConduit(a[0], a[1], a[2], _priced());
         }
-        address[] memory r = _routers();
-        r[0] = address(0);
-        vm.expectRevert(ImmutableVeTokenConduit.ZeroAddress.selector);
-        _deployWith(r, _priced());
         ImmutableVeTokenConduit.PricedToken[] memory p = _priced();
         p[1].token = address(0);
         vm.expectRevert(ImmutableVeTokenConduit.ZeroAddress.selector);
-        _deployWith(_routers(), p);
+        _deployWith(p);
         p = _priced();
         p[1].feed = address(0);
         vm.expectRevert(ImmutableVeTokenConduit.ZeroAddress.selector);
-        _deployWith(_routers(), p);
-    }
-
-    function test_constructor_revertsOnBadRouters() public {
-        vm.expectRevert(ImmutableVeTokenConduit.BadConfig.selector);
-        _deployWith(new address[](0), _priced());
-
-        address[] memory r = new address[](1);
-        r[0] = makeAddr("no code");
-        vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.NotAContract.selector, r[0]));
-        _deployWith(r, _priced());
-
-        r = new address[](2);
-        r[0] = address(router);
-        r[1] = address(router);
-        vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.BadRouter.selector, address(router)));
-        _deployWith(r, _priced());
-
-        address[11] memory forbidden = [
-            address(voter),
-            address(ve),
-            address(usdc),
-            address(sequencer),
-            address(weth),
-            address(cbbtc),
-            address(eurc),
-            address(ethFeed),
-            address(btcFeed),
-            address(usdcFeed),
-            address(eurcFeed)
-        ];
-        r = new address[](1);
-        for (uint256 i; i < forbidden.length; ++i) {
-            r[0] = forbidden[i];
-            vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.BadRouter.selector, forbidden[i]));
-            _deployWith(r, _priced());
-        }
+        _deployWith(p);
     }
 
     function test_constructor_revertsOnBadPricedTokens() public {
         vm.expectRevert(ImmutableVeTokenConduit.BadConfig.selector);
-        _deployWith(_routers(), new ImmutableVeTokenConduit.PricedToken[](0));
+        _deployWith(new ImmutableVeTokenConduit.PricedToken[](0));
 
         ImmutableVeTokenConduit.PricedToken[] memory nine = new ImmutableVeTokenConduit.PricedToken[](9);
         for (uint256 i; i < 9; ++i) {
             nine[i] = ImmutableVeTokenConduit.PricedToken(address(new MockToken(18)), address(usdcFeed), 108_000);
         }
-        nine[0].token = address(usdc);
         vm.expectRevert(ImmutableVeTokenConduit.BadConfig.selector);
-        _deployWith(_routers(), nine);
+        _deployWith(nine);
 
         ImmutableVeTokenConduit.PricedToken[] memory p = _priced();
         p[3].token = address(weth);
         vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.Duplicate.selector, address(weth)));
-        _deployWith(_routers(), p);
+        _deployWith(p);
 
         p = _priced();
         p[3].feed = makeAddr("no feed");
         vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.NotAContract.selector, p[3].feed));
-        _deployWith(_routers(), p);
+        _deployWith(p);
+    }
 
-        p = _priced();
-        p[2] = p[3];
-        p[3] = ImmutableVeTokenConduit.PricedToken(address(junk), address(eurcFeed), 108_000);
-        vm.expectRevert(ImmutableVeTokenConduit.BadConfig.selector);
-        _deployWith(_routers(), p);
+    function test_constructor_acceptsOneToEightPricedTokens() public {
+        ImmutableVeTokenConduit.PricedToken[] memory eight = new ImmutableVeTokenConduit.PricedToken[](8);
+        for (uint256 i; i < 8; ++i) {
+            eight[i] = ImmutableVeTokenConduit.PricedToken(address(new MockToken(18)), address(usdcFeed), 108_000);
+        }
+        (address token,,,,) = _deployWith(eight).pricedTokens(7);
+        assertEq(token, eight[7].token);
+        ImmutableVeTokenConduit.PricedToken[] memory one = new ImmutableVeTokenConduit.PricedToken[](1);
+        one[0] = eight[0];
+        (token,,,,) = _deployWith(one).pricedTokens(0);
+        assertEq(token, eight[0].token);
     }
 
     function test_constructor_revertsOnUnusableFeeds() public {
         ethFeed.set(ETH_USD, block.timestamp - 1501);
-        vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.UnpricedToken.selector, address(weth)));
+        vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.BadFeed.selector, address(ethFeed)));
         _deploy();
         ethFeed.set(0, block.timestamp);
-        vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.UnpricedToken.selector, address(weth)));
+        vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.BadFeed.selector, address(ethFeed)));
         _deploy();
         ethFeed.set(ETH_USD, block.timestamp);
         MockFeed f = new MockFeed(8, 1e8);
         f.setReverts(true);
         ImmutableVeTokenConduit.PricedToken[] memory p = _priced();
         p[3].feed = address(f);
-        vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.UnpricedToken.selector, address(eurc)));
-        _deployWith(_routers(), p);
+        vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.BadFeed.selector, address(f)));
+        _deployWith(p);
     }
 
     function test_constructor_revertsWhileSequencerDown() public {
@@ -233,20 +186,10 @@ contract SurfaceTest is ConduitTestBase {
     }
 
     function test_constructor_revertsIfAlreadyRegistered() public {
-        bytes memory args =
-            abi.encode(address(voter), address(ve), address(usdc), address(sequencer), _routers(), _priced());
+        bytes memory args = abi.encode(address(voter), address(ve), address(sequencer), _priced());
         bytes32 initHash = keccak256(bytes.concat(type(ImmutableVeTokenConduit).creationCode, args));
         ve.squat(vm.computeCreate2Address(bytes32(0), initHash, address(this)));
         vm.expectRevert(bytes("Conduit already configured"));
-        new ImmutableVeTokenConduit{salt: bytes32(0)}(
-            address(voter), address(ve), address(usdc), address(sequencer), _routers(), _priced()
-        );
-    }
-
-    function _deployWith(address[] memory routers, ImmutableVeTokenConduit.PricedToken[] memory p)
-        internal
-        returns (ImmutableVeTokenConduit)
-    {
-        return new ImmutableVeTokenConduit(address(voter), address(ve), address(usdc), address(sequencer), routers, p);
+        new ImmutableVeTokenConduit{salt: bytes32(0)}(address(voter), address(ve), address(sequencer), _priced());
     }
 }

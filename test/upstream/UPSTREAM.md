@@ -67,8 +67,6 @@ d8ddaa01716d83df1ca3324c5460cb917145acc0d1457e373c4d19fad184159e  hydrex/voter/I
 | Bribe implementation (`implementation()`) | `0x6225a2b81f83a71c0595449a224fc2385dfaa28d` | `0x419b9ff2bbe35af4ba4fb135c4f4a2cc215e0c212196d0b0d5dbf7bb6f301055` |
 | Bribe owner and bribe factory owner | `0x1aE3753d9b60743A89159CcFF8E251C60B560311` | |
 | Minter proxy | `0xA7D64625F45548a19B2A19e28E7546bb2839003E` | |
-| KyberSwap MetaAggregationRouterV2 | `0x6131B5fae19EA4f9D964eAc0408E4408b66337b5` | `0x99590941aab8e1eaf2ceb825abf64b6956e82ce41e8966d7e320846905db85e3` |
-| 1inch AggregationRouterV6, verified on Basescan, owner `0xa4659995DC39d891C1bA9131Aaf5F000E5B57224` | `0x111111125421cA6dc452d289314280a0f8842A65` | `0x770b14c4159d028ba8004c2d37bf91cc6111b1270bdf2afa75d4af1b77dbd75f` |
 | `TREASURY`, a Safe 1.5.0 proxy (2 of 3) | `0x450c72de8c0079B49AcedF294a13011bd09D125B` | `0x4e381985ca68b3e5d27b4425fa581c19cf33146d3f887a3cfca96f55528ea46f` |
 
 ## Constants
@@ -164,7 +162,6 @@ logic are separate contracts that the Voter and the VotingEscrow `delegatecall`.
 | `rewardData(address,uint256)` | `0x38174862` | `BribeV2.sol`, a public mapping of `Reward` |
 | `balanceOf(address)` | `0x70a08231` | ERC-20 |
 | `transfer(address,uint256)` | `0xa9059cbb` | ERC-20 |
-| `approve(address,uint256)` | `0x095ea7b3` | ERC-20 |
 | `decimals()` | `0x313ce567` | ERC-20, Chainlink |
 | `latestRoundData()` | `0xfeaf968c` | Chainlink |
 

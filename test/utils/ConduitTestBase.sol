@@ -7,20 +7,14 @@ import {Test} from "forge-std/Test.sol";
 import {ImmutableVeTokenConduit} from "../../src/ImmutableVeTokenConduit.sol";
 import {MockBribe} from "../mocks/MockBribe.sol";
 import {MockFeed} from "../mocks/MockFeed.sol";
-import {MockRouter} from "../mocks/MockRouter.sol";
 import {MockToken} from "../mocks/MockToken.sol";
 import {MockVoter} from "../mocks/MockVoter.sol";
 import {MockVotingEscrow} from "../mocks/MockVotingEscrow.sol";
 
 contract FeeHarness is ImmutableVeTokenConduit {
-    constructor(
-        address voter_,
-        address veToken_,
-        address usdc_,
-        address sequencerFeed_,
-        address[] memory routers_,
-        PricedToken[] memory pricedTokens_
-    ) ImmutableVeTokenConduit(voter_, veToken_, usdc_, sequencerFeed_, routers_, pricedTokens_) {}
+    constructor(address voter_, address veToken_, address sequencerFeed_, PricedToken[] memory pricedTokens_)
+        ImmutableVeTokenConduit(voter_, veToken_, sequencerFeed_, pricedTokens_)
+    {}
 
     function fee(uint256 amount, uint256 bps) external pure returns (uint256) {
         return _fee(amount, bps);
@@ -55,7 +49,6 @@ abstract contract ConduitTestBase is Test {
     MockFeed internal usdcFeed;
     MockFeed internal eurcFeed;
     MockFeed internal sequencer;
-    MockRouter internal router;
     ImmutableVeTokenConduit internal conduit;
 
     uint256 internal poolCount;
@@ -77,18 +70,12 @@ abstract contract ConduitTestBase is Test {
         ve = new MockVotingEscrow();
         voter = new MockVoter(ve, bribeOwner);
         voter.setEpoch(EPOCH);
-        router = new MockRouter();
         conduit = _deploy();
         treasury = conduit.TREASURY();
         ve.setPastVotes(address(conduit), EPOCH, POWER);
         ve.mint(TOKEN_ID, holder);
         vm.prank(holder);
         ve.setConduitApproval(address(conduit), TOKEN_ID, true);
-    }
-
-    function _routers() internal view returns (address[] memory r) {
-        r = new address[](1);
-        r[0] = address(router);
     }
 
     function _priced() internal view returns (ImmutableVeTokenConduit.PricedToken[] memory p) {
@@ -100,13 +87,15 @@ abstract contract ConduitTestBase is Test {
     }
 
     function _deploy() internal returns (ImmutableVeTokenConduit) {
-        return new ImmutableVeTokenConduit(
-            address(voter), address(ve), address(usdc), address(sequencer), _routers(), _priced()
-        );
+        return _deployWith(_priced());
+    }
+
+    function _deployWith(ImmutableVeTokenConduit.PricedToken[] memory p) internal returns (ImmutableVeTokenConduit) {
+        return new ImmutableVeTokenConduit(address(voter), address(ve), address(sequencer), p);
     }
 
     function _deployHarness() internal returns (FeeHarness) {
-        return new FeeHarness(address(voter), address(ve), address(usdc), address(sequencer), _routers(), _priced());
+        return new FeeHarness(address(voter), address(ve), address(sequencer), _priced());
     }
 
     /// @dev A new pool with a live gauge, `others` votes from other voters, and `usd` dollars of USDC rewards this
@@ -189,30 +178,8 @@ abstract contract ConduitTestBase is Test {
         t[1] = b;
     }
 
-    function _swap(address token, uint256 amountIn, uint256 usdcOut, address to)
-        internal
-        view
-        returns (ImmutableVeTokenConduit.Swap memory)
-    {
-        return ImmutableVeTokenConduit.Swap(
-            token, address(router), abi.encodeCall(MockRouter.swap, (token, amountIn, address(usdc), usdcOut, to))
-        );
-    }
-
-    function _swaps(ImmutableVeTokenConduit.Swap memory a)
-        internal
-        pure
-        returns (ImmutableVeTokenConduit.Swap[] memory s)
-    {
-        s = new ImmutableVeTokenConduit.Swap[](1);
-        s[0] = a;
-    }
-
-    function _claim(address caller, address[] memory tokens, ImmutableVeTokenConduit.Swap[] memory swaps, uint256 min)
-        internal
-        returns (uint256 usdcOut, uint256 fee)
-    {
+    function _claim(address caller, address[] memory tokens) internal returns (uint256[] memory) {
         vm.prank(caller);
-        return conduit.claim(TOKEN_ID, new address[](0), _bribes(), tokens, swaps, min);
+        return conduit.claim(TOKEN_ID, new address[](0), _bribes(), tokens);
     }
 }

@@ -17,8 +17,6 @@ contract DeployTest is Test {
         vm.warp(1_792_400_000);
         d = new Deploy();
         vm.etch(d.VOTER(), hex"00");
-        vm.etch(d.KYBER_ROUTER(), hex"00");
-        vm.etch(d.ONEINCH_ROUTER(), hex"00");
         vm.etch(d.VE_TOKEN(), address(new MockVotingEscrow()).code);
         vm.etch(d.WETH(), address(new MockToken(18)).code);
         vm.etch(d.CBBTC(), address(new MockToken(8)).code);
@@ -32,9 +30,9 @@ contract DeployTest is Test {
         MockFeed(d.SEQUENCER_FEED()).setStartedAt(block.timestamp - 30 days);
     }
 
-    function _feed(address at, uint8 decimals, int256 answer) internal {
-        vm.etch(at, address(new MockFeed(decimals, answer)).code);
-        MockFeed(at).set(answer, block.timestamp);
+    function _feed(address feed, uint8 decimals, int256 answer) internal {
+        vm.etch(feed, address(new MockFeed(decimals, answer)).code);
+        MockFeed(feed).set(answer, block.timestamp);
     }
 
     function test_canonicalValues() public view {
@@ -42,14 +40,7 @@ contract DeployTest is Test {
         assertEq(d.VE_TOKEN(), 0x25B2ED7149fb8A05f6eF9407d9c8F878f59cd1e1);
         assertEq(d.USDC(), 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913);
         assertEq(d.SEQUENCER_FEED(), 0xBCF85224fc0756B9Fa45aA7892530B47e10b6433);
-        assertEq(d.KYBER_ROUTER(), 0x6131B5fae19EA4f9D964eAc0408E4408b66337b5);
-        assertEq(d.ONEINCH_ROUTER(), 0x111111125421cA6dc452d289314280a0f8842A65);
-        assertEq(d.SALT(), keccak256("metadex.cafe/ImmutableVeTokenConduit/usdc/v1"));
-
-        address[] memory r = d.routers();
-        assertEq(r.length, 2);
-        assertEq(r[0], 0x6131B5fae19EA4f9D964eAc0408E4408b66337b5);
-        assertEq(r[1], 0x111111125421cA6dc452d289314280a0f8842A65);
+        assertEq(d.SALT(), keccak256("metadex.cafe/ImmutableVeTokenConduit/v1"));
 
         ImmutableVeTokenConduit.PricedToken[] memory p = d.pricedTokens();
         assertEq(p.length, 4);
@@ -95,16 +86,13 @@ contract DeployTest is Test {
             keccak256(vm.getDeployedCode("ImmutableVeTokenConduit.sol:ImmutableVeTokenConduit"))
         );
 
-        ImmutableVeTokenConduit local = new ImmutableVeTokenConduit(
-            d.VOTER(), d.VE_TOKEN(), d.USDC(), d.SEQUENCER_FEED(), d.routers(), d.pricedTokens()
-        );
+        ImmutableVeTokenConduit local =
+            new ImmutableVeTokenConduit(d.VOTER(), d.VE_TOKEN(), d.SEQUENCER_FEED(), d.pricedTokens());
         assertEq(vm.parseJsonAddress(json, ".treasury"), local.TREASURY());
         assertEq(vm.parseJsonUint(json, ".feeBps"), local.FEE_BPS());
         assertEq(vm.parseJsonAddress(json, ".deployment.voter"), d.VOTER());
         assertEq(vm.parseJsonAddress(json, ".deployment.veToken"), d.VE_TOKEN());
-        assertEq(vm.parseJsonAddress(json, ".deployment.usdc"), d.USDC());
         assertEq(vm.parseJsonAddress(json, ".deployment.sequencerFeed"), d.SEQUENCER_FEED());
-        assertEq(vm.parseJsonAddressArray(json, ".deployment.routers"), d.routers());
         ImmutableVeTokenConduit.PricedToken[] memory p = d.pricedTokens();
         address[] memory tokens = vm.parseJsonAddressArray(json, ".deployment.pricedTokens");
         address[] memory feeds = vm.parseJsonAddressArray(json, ".deployment.feeds");
@@ -129,11 +117,7 @@ contract DeployTest is Test {
         ImmutableVeTokenConduit c = ImmutableVeTokenConduit(predicted);
         assertEq(c.voter(), d.VOTER());
         assertEq(c.veToken(), d.VE_TOKEN());
-        assertEq(c.usdc(), d.USDC());
         assertEq(c.sequencerFeed(), d.SEQUENCER_FEED());
-        assertEq(c.approvedRouters(0), d.KYBER_ROUTER());
-        assertEq(c.approvedRouters(1), d.ONEINCH_ROUTER());
-        assertTrue(c.isApprovedRouter(d.ONEINCH_ROUTER()));
         assertTrue(MockVotingEscrow(d.VE_TOKEN()).configActive(predicted));
     }
 
@@ -153,10 +137,9 @@ contract DeployTest is Test {
 
     function test_predict_dependsOnEveryArgument() public view {
         bytes memory code = type(ImmutableVeTokenConduit).creationCode;
-        address[] memory r = d.routers();
         ImmutableVeTokenConduit.PricedToken[] memory p = d.pricedTokens();
         p[0].maxAge = 1501;
-        bytes memory otherArgs = abi.encode(d.VOTER(), d.VE_TOKEN(), d.USDC(), d.SEQUENCER_FEED(), r, p);
+        bytes memory otherArgs = abi.encode(d.VOTER(), d.VE_TOKEN(), d.SEQUENCER_FEED(), p);
         address other = vm.computeCreate2Address(d.SALT(), keccak256(bytes.concat(code, otherArgs)), CREATE2_FACTORY);
         assertTrue(other != d.predict());
     }
