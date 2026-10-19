@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.37;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, Vm} from "forge-std/Test.sol";
 
 import {ImmutableVeTokenConduit} from "../src/ImmutableVeTokenConduit.sol";
 import {MockBribe} from "./mocks/MockBribe.sol";
@@ -31,7 +31,7 @@ contract ClaimTest is ConduitTestBase {
         address[] memory tokens = _tokens(address(weth), address(usdc), address(junk));
         vm.expectEmit(address(conduit));
         emit ImmutableVeTokenConduit.Claimed(
-            TOKEN_ID, holder, stranger, tokens, _uints(1e18, 100e6, 5e18), _uints(0.01e18, 1e6, 0.05e18)
+            TOKEN_ID, holder, stranger, tokens, _uints(1e18, 100e6, 5e18), _uints(0.01e18, 1e6, 0.05e18), 0
         );
         uint256[] memory amounts = _claim(stranger, tokens);
         assertEq(amounts, _uints(1e18, 100e6, 5e18));
@@ -85,6 +85,54 @@ contract ClaimTest is ConduitTestBase {
         vm.expectCall(address(weth), abi.encodeWithSelector(MockToken.transfer.selector), 0);
         amounts = _claim(stranger, _tokens(address(weth)));
         assertEq(amounts[0], 0);
+        assertEq(conduit.lastClaimBlock(TOKEN_ID), 0);
+    }
+
+    function _previousClaimBlock(uint256 tokenId, address[] memory tokens) internal returns (uint256 previous) {
+        vm.recordLogs();
+        vm.prank(stranger);
+        conduit.claim(tokenId, new address[](0), _bribes(), tokens);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        (,,, previous) = abi.decode(logs[logs.length - 1].data, (address[], uint256[], uint256[], uint256));
+    }
+
+    function test_claim_eventLinksToThePreviousClaimBlock() public {
+        vm.roll(100);
+        _earn(address(usdc), 100e6);
+        assertEq(_previousClaimBlock(TOKEN_ID, _tokens(address(usdc))), 0);
+        assertEq(conduit.lastClaimBlock(TOKEN_ID), 100);
+        vm.roll(105);
+        _earn(address(usdc), 100e6);
+        assertEq(_previousClaimBlock(TOKEN_ID, _tokens(address(usdc))), 100);
+        assertEq(conduit.lastClaimBlock(TOKEN_ID), 105);
+    }
+
+    function test_claim_emptyClaimKeepsThePointer() public {
+        vm.roll(100);
+        _earn(address(usdc), 100e6);
+        _claim(stranger, _tokens(address(usdc)));
+        vm.roll(105);
+        assertEq(_previousClaimBlock(TOKEN_ID, _tokens(address(usdc))), 100);
+        assertEq(conduit.lastClaimBlock(TOKEN_ID), 100);
+    }
+
+    function test_claim_sameBlockClaimsPointToThatBlock() public {
+        _earn(address(usdc), 100e6);
+        assertEq(_previousClaimBlock(TOKEN_ID, _tokens(address(usdc))), 0);
+        _earn(address(weth), 1e18);
+        assertEq(_previousClaimBlock(TOKEN_ID, _tokens(address(weth))), block.number);
+        assertEq(conduit.lastClaimBlock(TOKEN_ID), block.number);
+    }
+
+    function test_claim_pointersArePerVeNft() public {
+        address other = makeAddr("other holder");
+        ve.mint(8, other);
+        vm.prank(other);
+        ve.setConduitApproval(address(conduit), 8, true);
+        rewardBribe.setEarned(8, address(usdc), 100e6);
+        assertEq(_previousClaimBlock(8, _tokens(address(usdc))), 0);
+        assertEq(conduit.lastClaimBlock(8), block.number);
+        assertEq(conduit.lastClaimBlock(TOKEN_ID), 0);
     }
 
     function test_claim_notOptedInRevertsInVoter() public {

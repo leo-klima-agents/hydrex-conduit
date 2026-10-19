@@ -54,6 +54,14 @@ bribe contracts. For each token, the conduit sends 1% of what it received, round
 to the veNFT's owner, and returns the amounts claimed. Anyone can call it, for any token, and the fee is the same
 whoever calls. At least one fee or bribe contract is required.
 
+The conduit also records, for each veNFT, the block of its last claim that received anything:
+`lastClaimBlock(tokenId)`. Each `Claimed` event carries the block recorded before it as `previousClaimBlock`, so a
+veNFT's claims can be read newest first, one block of logs at a time: start at `lastClaimBlock(tokenId)` and follow
+`previousClaimBlock` back. When a block holds several claims for the same veNFT, the first one that received anything
+points to the previous block and the later ones point to the block itself, so follow the smallest
+`previousClaimBlock` below the current block. Claims that receive nothing don't move the pointer. The chain follows
+the veNFT across owners, and each event names the owner at the time.
+
 ## For veNFT holders
 
 To opt in, call `setConduitApproval(conduit, tokenId, true)` on the Hydrex VotingEscrow. This delegates your veNFT's
@@ -95,7 +103,7 @@ address: it makes the whole claim revert.
 ## Trust and limitations
 
 - Nobody can change the conduit. A new treasury, fee or price feed means a new deployment, and holders opting in
-  again.
+  again. The only thing it writes after deployment is the block of each veNFT's last claim.
 - Hydrex's Voter, VotingEscrow and bribes are upgradeable, so the conduit is only as safe as they are.
 - The bribes' owner, `0x1aE3753d9b60743A89159CcFF8E251C60B560311`, can deposit a bribe, win the vote with it and take
   the bribe back, or take any bribe's tokens. Nobody else can.
@@ -106,6 +114,9 @@ address: it makes the whole claim revert.
   and anyone can propose a better one. A vote accepted in an epoch's last block can't be replaced.
 - A token that charges a fee on transfers is charged twice on its way through the conduit.
 - Tokens sent to the conduit by mistake are stuck there.
+- The Voter calls whatever fee and bribe contracts a claim lists, so anyone can claim dust through a contract of their
+  own. That adds an entry to a veNFT's claim history, at most one per block, so readers should expect claims of
+  unknown tokens or tiny amounts.
 
 ## Deployment
 
@@ -114,7 +125,7 @@ Not deployed yet.
 | | |
 |---|---|
 | Network | Base |
-| Address | `0xa5c4128AF10A40AE2DE655AFC01556FcE181528E` |
+| Address | `0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B` |
 | Voter | `0xc69E3eF39E3fFBcE2A1c570f8d3ADF76909ef17b` |
 | VotingEscrow | `0x25B2ED7149fb8A05f6eF9407d9c8F878f59cd1e1` |
 | Sequencer uptime feed | `0xBCF85224fc0756B9Fa45aA7892530B47e10b6433` |

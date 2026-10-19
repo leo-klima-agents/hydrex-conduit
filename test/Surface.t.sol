@@ -72,7 +72,7 @@ contract SurfaceTest is ConduitTestBase {
         assertFalse(ok);
     }
 
-    function test_storage_neverWrittenAfterDeployment() public {
+    function test_storage_onlyClaimWritesTheLastClaimBlock() public {
         address pool = _pool(100, POWER);
         _earn(address(weth), 1e18);
         _earn(address(usdc), 10e6);
@@ -83,21 +83,28 @@ contract SurfaceTest is ConduitTestBase {
         conduit.currentScore();
         conduit.poolValue(pool);
         conduit.pricedTokens(0);
+        conduit.lastClaimBlock(TOKEN_ID);
         vm.prank(stranger);
         conduit.vote(pools, weights);
-        _claim(stranger, _tokens(address(weth), address(usdc)));
-        Vm.AccountAccess[] memory accesses = vm.stopAndReturnStateDiff();
+        _assertWrites(vm.stopAndReturnStateDiff(), 0);
 
-        uint256 reads;
+        vm.startStateDiffRecording();
+        _claim(stranger, _tokens(address(weth), address(usdc)));
+        _assertWrites(vm.stopAndReturnStateDiff(), 1);
+    }
+
+    function _assertWrites(Vm.AccountAccess[] memory accesses, uint256 expected) internal view {
+        uint256 writes;
         for (uint256 i; i < accesses.length; ++i) {
             for (uint256 j; j < accesses[i].storageAccesses.length; ++j) {
                 Vm.StorageAccess memory s = accesses[i].storageAccesses[j];
-                if (s.account != address(conduit)) continue;
-                assertFalse(s.isWrite, "conduit storage written");
-                ++reads;
+                if (s.account != address(conduit) || !s.isWrite) continue;
+                assertEq(s.slot, keccak256(abi.encode(TOKEN_ID, uint256(1))));
+                assertEq(uint256(s.newValue), block.number);
+                ++writes;
             }
         }
-        assertGt(reads, 0);
+        assertEq(writes, expected);
     }
 
     function test_constructor_revertsOnZeroAddresses() public {

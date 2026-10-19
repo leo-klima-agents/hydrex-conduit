@@ -52,6 +52,7 @@ contract ImmutableVeTokenConduit {
     address public immutable sequencerFeed;
 
     Oracle[] public pricedTokens;
+    mapping(uint256 tokenId => uint256 blockNumber) public lastClaimBlock;
 
     bool private transient locked;
 
@@ -69,7 +70,8 @@ contract ImmutableVeTokenConduit {
         address indexed caller,
         address[] tokens,
         uint256[] amounts,
-        uint256[] fees
+        uint256[] fees,
+        uint256 previousClaimBlock
     );
 
     error ZeroAddress();
@@ -179,13 +181,17 @@ contract ImmutableVeTokenConduit {
 
         amounts = new uint256[](n);
         uint256[] memory fees = new uint256[](n);
+        bool received;
         for (uint256 i; i < n; ++i) {
             amounts[i] = IERC20(tokens[i]).balanceOf(address(this)) - before[i];
+            if (amounts[i] != 0) received = true;
             fees[i] = amounts[i] * FEE_BPS / 10_000;
             if (fees[i] != 0) _transfer(tokens[i], TREASURY, fees[i]);
             if (amounts[i] != fees[i]) _transfer(tokens[i], owner, amounts[i] - fees[i]);
         }
-        emit Claimed(tokenId, owner, msg.sender, tokens, amounts, fees);
+        uint256 previous = lastClaimBlock[tokenId];
+        if (received) lastClaimBlock[tokenId] = block.number;
+        emit Claimed(tokenId, owner, msg.sender, tokens, amounts, fees, previous);
     }
 
     function _context() private view returns (Context memory ctx) {

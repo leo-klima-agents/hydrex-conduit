@@ -450,7 +450,7 @@ contract ForkTest is Test {
             cuts[i] = amounts[i] / 100;
         }
         vm.expectEmit(address(conduit));
-        emit ImmutableVeTokenConduit.Claimed(TOKEN_ID, HOLDER, stranger, tokens, amounts, cuts);
+        emit ImmutableVeTokenConduit.Claimed(TOKEN_ID, HOLDER, stranger, tokens, amounts, cuts, 0);
         vm.prank(stranger);
         assertEq(conduit.claim(TOKEN_ID, fees, bribes, tokens), amounts);
 

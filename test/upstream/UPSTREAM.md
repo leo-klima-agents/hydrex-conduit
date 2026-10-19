@@ -106,9 +106,10 @@ logic are separate contracts that the Voter and the VotingEscrow `delegatecall`.
    ([`VoterV5_ClaimLogic`](https://basescan.org/address/0x68Ed6a9fd3fe6DB26dEf56641c3B251278d8C21D#code) lines 153
    and 188), which is true for the owner and for the token's claim-redirect address
    ([`VotingEscrowV2Upgradeable.sol`](https://repo.sourcify.dev/8453/0x0FC68cE53Be957a1AA779f553AD49f6068fFf231)
-   lines 726-745). Bribes then pay `_recipient` ([`BribeV2.sol`](hydrex/bribe/BribeV2.sol#L336-L339)). So the
-   conduit can claim only for opted-in veNFTs, and an owner can always claim directly. A transfer clears the
-   claim-redirect address (`VotingEscrowV2Upgradeable.sol` line 161).
+   lines 726-745). They then call whatever fee and bribe contracts the caller lists (lines 155 and 190), and bribes
+   pay `_recipient` ([`BribeV2.sol`](hydrex/bribe/BribeV2.sol#L336-L339)). So the conduit can claim only for
+   opted-in veNFTs, and an owner can always claim directly. A transfer clears the claim-redirect address
+   (`VotingEscrowV2Upgradeable.sol` line 161).
 9. **Opting in.** `setConduitApprovalConfig` registers the caller once, with a non-empty list of actions
    ([`VotingEscrowV2_ApprovalLogic`](https://repo.sourcify.dev/8453/0x4B0BC0889EB524Dbae36d409fF733851E9B4f63D)
    lines 23-39). Actions 3 and 5 are `CLAIM_REDIRECT_APPROVAL` and `VOTING_DELEGATE`
