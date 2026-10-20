@@ -77,7 +77,9 @@ jq -j '.sources["@cryptoalgebra/volatility-oracle-plugin/contracts/interfaces/IV
 | Minter proxy | `0xA7D64625F45548a19B2A19e28E7546bb2839003E` | |
 | `TREASURY`, a Safe 1.5.0 proxy (2 of 3) | `0x450c72de8c0079B49AcedF294a13011bd09D125B` | `0x4e381985ca68b3e5d27b4425fa581c19cf33146d3f887a3cfca96f55528ea46f` |
 | Algebra factory | `0x36077D39cdC65E1e3FB65810430E5b2c4D5fA29E` | `0x6f54720c3eb4326e8cf846308b98ab0c0d070a441ca11ba8cd00be0256af7084` |
-| Algebra factory owner | `0x74266f2b206D1359B83fc74949EF07176FB3AE03` | |
+| Algebra factory owner, and its only default admin | `0x74266f2b206D1359B83fc74949EF07176FB3AE03` | |
+| Algebra pool administrator (`POOLS_ADMINISTRATOR_ROLE`), a contract | `0x00EdE53f39415E64c78eebD02AD9D383b3A0C0F1` | |
+| Algebra pool administrator (`POOLS_ADMINISTRATOR_ROLE`), an EIP-7702 account | `0xDeaD1F5aF792afc125812E875A891b038f888258` | |
 | Upgradeable plugin beacon | `0x106937fC03212A762be17D529893A32E47bA13a1` | `0x2105a3ca212415ea232cb45c3d9a073ea881378afadc776198c59f79d018f97e` |
 | Upgradeable plugin implementation (`implementation()`) | `0xAF11628e68e8bD45375560E549Ab8411FA034D4F` | `0x51aab6d45348f1b652884dcf8e4eaf06c54de68760f64f8487c5d670fc3488e4` |
 | Upgradeable plugin beacon owner, a plugin factory | `0xa8dD4C05796801C734E99d5582E90e3a8bD88194` | |
@@ -166,12 +168,17 @@ files are in the sources on Sourcify of the contract named in the implementation
     computes either kind of swap ([`AlgebraPool.sol`](https://repo.sourcify.dev/8453/0xB3f0828eB3375B609b49E9Fb959472a29cD6E49a) lines 250,
     332 and 391-401), unless the plugin itself is swapping or the pool's plugin config clears the before-swap flag.
     `getTimepoints` extrapolates past the last timepoint with the pool's current tick (`VolatilityOracle.sol` line
-    119). So a window that ends a block before the current one contains no tick set in the current block.
+    119). So a window that ends at the current block contains no tick set in it: the block's first swap records the
+    tick from before it, and until then the pool's current tick is the one the previous block left.
 13. **Plugin administration.** Only the Algebra factory's owner or a pool administrator can replace a pool's plugin
-    or change its plugin config (`AlgebraPool.sol` lines 472-474 and 497-511). The upgradeable plugins follow a beacon
-    owned by a plugin factory, and delegate their oracle to a separate implementation
-    (`VolatilityOracleConnector.sol` line 41). `test/Fork.t.sol` checks that a stranger can't replace a plugin, and
-    that a replaced plugin only stops the tail from counting.
+    (`AlgebraPool.sol` lines 472-474 and 497-501). They and the plugin itself can change its plugin config (lines
+    504-511). Neither plugin's code clears the before-swap flag: each only resets its default config, which has it, or
+    sets flags of it, or clears the after-swap flag (`HydrexBasePlugin.sol` lines 39, 67 and 115,
+    `VolatilityOraclePlugin.sol` line 50 and `FarmingProxyPlugin.sol` lines 58 and 78; `AlgebraUpgradeablePlugin.sol`
+    lines 135, 178 and 245 and `FarmingProxyPluginImplementation.sol` lines 53-59).
+    The upgradeable plugins follow a beacon owned by a plugin factory, and delegate their oracle to a separate
+    implementation (`VolatilityOracleConnector.sol` line 41). `test/Fork.t.sol` pins the factory's administrators,
+    checks that a stranger can't replace a plugin, and that a replaced plugin only stops the tail from counting.
 14. **Storage.** `rewardData` is at slot 53 of a bribe's storage. `test/Fork.t.sol` writes it to replay deposits of
     tokens it can't mint, and checks the slot against a real deposit.
 

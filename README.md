@@ -8,7 +8,7 @@ owner and sends a 1% fee to a fixed treasury.
 The contract has no owner, no settings and no upgrade path. All of it is in
 [`src/ImmutableVeTokenConduit.sol`](src/ImmutableVeTokenConduit.sol). This is version 2, which also counts the fees a
 pool earns in tokens without a Chainlink feed. It will be deployed on Base at
-`0x9a1D8Ba7c4C54e6433a23f7CB3Baa4b024E2927e`. Version 1 is deployed at
+`0x83C583c517c65B413F84e3Ed2c601EF2d4c587E0`. Version 1 is deployed at
 [`0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B`](https://basescan.org/address/0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B#code)
 and keeps working as it is.
 
@@ -61,15 +61,19 @@ with one that has no Chainlink feed (the tail token). The conduit counts the tai
 - their Algebra base pool, `poolByPair` on the Algebra factory, is the gauge's own pool;
 - the fee bribe holds some of the whitelisted tokens, and the core token's price is fresh.
 
-It prices the tail token at the pool's average tick over the 30 minutes (`TWAP_WINDOW`) that end 2 seconds
-(`TWAP_LAG`, one Base block) before the vote's block, read from the pool's plugin, and converts it with the core
-token's Chainlink price. It counts the tail token's fees up to the value of the fee bribe's whitelisted tokens, so a
-pool's fee bribe counts at most twice its whitelisted fees.
+It prices the tail token at the pool's average tick over the last 30 minutes (`TWAP_WINDOW`), read from the pool's
+plugin, and converts it with the core token's Chainlink price. The plugin records each block's price before its first
+trade, so trades in the vote's own block don't count. The average is rounded against the tail token, and votes wait an
+hour after the sequencer comes back (`SEQUENCER_GRACE`), so the window never covers time when it was down. The conduit
+counts the tail token's fees up to the value of the fee bribe's whitelisted tokens, so a pool's fee bribe counts at
+most twice its whitelisted fees.
 
-The tail token counts as zero when the plugin's answer is missing, takes more than 130,000 gas, or isn't two
-cumulative ticks, and when the average tick is within 500 ticks of either end of Algebra's range (±887,272), as it is
-when a pool's price has sat at the end of the range all window. A price that reaches the end partway through the window
-only moves the average, which counts up to the cap. Paid bribes count whitelisted tokens only.
+The tail token counts as zero when the plugin's answer is missing, takes more than 120,000 gas (`TWAP_GAS`), or isn't
+two cumulative ticks, and when the average tick is 740,000 (`TICK_EDGE`) or more from zero. That far out, one raw
+unit of one token is worth over 10^32 of the other's. No pool with real prices gets there, but one whose price has sat
+at the end of Algebra's range (±887,272) all window does, and inside the bound the conduit's price math is accurate to
+a millionth. A price that reaches the end partway through the window only moves the average, which counts up to the
+cap. Paid bribes count whitelisted tokens only.
 
 ### Claiming
 
@@ -88,7 +92,7 @@ the veNFT across owners, and each event names the owner at the time.
 
 ## For veNFT holders
 
-To opt in, call `setConduitApproval(0x9a1D8Ba7c4C54e6433a23f7CB3Baa4b024E2927e, tokenId, true)` on the Hydrex
+To opt in, call `setConduitApproval(0x83C583c517c65B413F84e3Ed2c601EF2d4c587E0, tokenId, true)` on the Hydrex
 VotingEscrow. This delegates your veNFT's votes to the conduit from the next epoch and lets the conduit claim your
 rewards. Call it with `false` to opt out. Transferring the veNFT clears the claim approval, so a new owner has to opt
 in again.
@@ -109,11 +113,12 @@ conduit first.
 3. Check the result with `score(pools, weights)` and `currentScore()`, or simulate `vote` with `eth_call`, then send
    it.
 
-`score`, `currentScore` and `poolValue` use exactly the numbers `vote` uses. Like `vote`, they revert with
+`score`, `currentScore` and `poolValue` use the numbers `vote` uses, except when a plugin read nears `TWAP_GAS` (see
+[Trust and limitations](#trust-and-limitations)). Like `vote`, they revert with
 `EpochStale` until someone calls `update_period()` on the Hydrex minter at the start of an epoch, with
 `NoVotingPower` if the conduit had no delegated votes when the epoch started, and with `SequencerDown` while the
 sequencer is down or in the hour after it comes back. The Voter accepts one vote per block. Replacing a vote of 20
-pools with 20 others costs about 12.2M gas on the pools whose plugins cost the most to read, and at most about 15.2M
+pools with 20 others costs about 12.2M gas on the pools whose plugins cost the most to read, and at most about 15.8M
 whatever the plugins do, within Base's limit of 16,777,216 gas per transaction.
 
 ### Claiming rewards
@@ -137,24 +142,24 @@ address: it makes the whole claim revert.
 - Chainlink prices only affect votes. If a feed goes stale, its token counts as zero in both the vote in force and
   the proposal, so a worse proposal can win while it lasts; for WETH and cbBTC, that takes 25 minutes without an
   update. If the sequencer feed stops answering, votes stop, but claims still work.
-- Tail prices come from the pools themselves, and anyone can move a pool's price by trading. A price that ends a block
-  before the vote can't be moved within the vote's transaction, but trades in earlier blocks can move it a long way: the
-  average is of ticks, so pushing a pool to the end of its range for a minute moves the 30-minute average by about
-  40,000 ticks, about 50 times the price. That is cheap in a thin pool and free for whoever controls a token's supply,
-  and is enough to make the pool's tail count up to the cap. The cap bounds the harm: what delegators receive from a
-  pool is always at least half of what the conduit counts for it, and with honest prices the conduit never counts more
-  than they receive. Depositing whitelisted tokens in a fee bribe counts them once, unless real tail fees are there to
-  match them.
-- Whether a tail counts can depend on gas. A plugin read that needs more than 130,000 gas counts as zero, and a read
+- Tail prices come from the pools themselves, and anyone can move a pool's price by trading. Trades in the vote's own
+  block don't count, so the price can't be moved within the vote's transaction, but trades in earlier blocks can move it
+  a long way: the average is of ticks, so pushing a pool to the end of its range for a minute moves the 30-minute
+  average by about 40,000 ticks, about 50 times the price. That is cheap in a thin pool and free for whoever controls a
+  token's supply, and is enough to make the pool's tail count up to the cap. The cap bounds the harm: what delegators
+  receive from a pool is always at least half of what the conduit counts for it, and with honest prices the conduit
+  never counts more than they receive, to within a millionth. Depositing whitelisted tokens in a fee bribe counts them
+  once, unless real tail fees are there to match them.
+- Whether a tail counts can depend on gas. A plugin read that needs more than `TWAP_GAS` counts as zero, and a read
   costs less when the caller has already touched the plugin's storage, for example through an access list. The heaviest
   plugin on Base needs about 104,000 gas, so this doesn't happen today. If one grows heavier, its tail can count in one
   call and not in another, and `score`, `currentScore` and `poolValue` can then disagree with `vote`.
 - Pushing a tail token's price down removes it from the vote in force, which can let a worse proposal win until the
   price recovers and someone proposes again.
-- Algebra's factory owner and pool administrators can replace a pool's plugin or change its configuration, and a
-  plugin factory can upgrade the upgradeable plugins. A broken or hostile plugin can make a pool's tail count up to
-  its cap, or not at all. It gets at most 130,000 gas per call, so it can't make a vote too expensive for a Base
-  transaction.
+- Algebra's factory owner and pool administrators can replace a pool's plugin or change its configuration, a plugin
+  can change its own pool's configuration, and a plugin factory can upgrade the upgradeable plugins. A broken or
+  hostile plugin or configuration can make a pool's tail count up to its cap, or not at all. A plugin gets at most
+  `TWAP_GAS` per call, so it can't make a vote too expensive for a Base transaction.
 - Scores use other voters' current votes. If they change theirs later, the vote in force may no longer be the best,
   and anyone can propose a better one. A vote accepted in an epoch's last block can't be replaced.
 - A token that charges a fee on transfers is charged twice on its way through the conduit.
@@ -171,7 +176,7 @@ Version 2 isn't deployed yet. `script/Deploy.s.sol` deploys it at the address be
 | | |
 |---|---|
 | Network | Base |
-| Address | `0x9a1D8Ba7c4C54e6433a23f7CB3Baa4b024E2927e` |
+| Address | `0x83C583c517c65B413F84e3Ed2c601EF2d4c587E0` |
 | Voter | `0xc69E3eF39E3fFBcE2A1c570f8d3ADF76909ef17b` |
 | VotingEscrow | `0x25B2ED7149fb8A05f6eF9407d9c8F878f59cd1e1` |
 | Sequencer uptime feed | `0xBCF85224fc0756B9Fa45aA7892530B47e10b6433` |
@@ -185,8 +190,9 @@ Version 1 was deployed on 2026-10-19 at
 [`0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B`](https://basescan.org/address/0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B#code)
 by transaction [`0x3fb9…4c00`](https://basescan.org/tx/0x3fb98ef128fcda6d9a59ac2d6b293b4ae2ccdb6e1c634d53651a0761867c4d00),
 with salt `keccak256("metadex.cafe/ImmutableVeTokenConduit/v1")`, and is verified on BaseScan as an exact match. It
-counts only the whitelisted tokens. A veNFT has one claim-redirect address and one delegate, so opting in to version
-2 takes it out of version 1. `broadcast/` holds version 1's deployment until version 2 is deployed.
+counts only the whitelisted tokens, and its source and `verification/` files are at commit `c83a8d1` of this
+repository. A veNFT has one claim-redirect address and one delegate, so opting in to version 2 takes it out of
+version 1. `broadcast/` holds version 1's deployment until version 2 is deployed.
 
 Deployment steps:
 
@@ -200,7 +206,7 @@ Deployment steps:
 ```
 forge script script/Deploy.s.sol --rpc-url $BASE_RPC_URL --broadcast --ledger
 ARGS=$(jq -j .deployment.constructorArgs verification/bytecode-hashes.json)
-forge verify-contract 0x9a1D8Ba7c4C54e6433a23f7CB3Baa4b024E2927e src/ImmutableVeTokenConduit.sol:ImmutableVeTokenConduit --chain base \
+forge verify-contract 0x83C583c517c65B413F84e3Ed2c601EF2d4c587E0 src/ImmutableVeTokenConduit.sol:ImmutableVeTokenConduit --chain base \
   --constructor-args $ARGS --license-type MIT --watch
 ```
 
@@ -210,7 +216,7 @@ To check that the deployed contract is this repository's code, compare its code 
 `verification/bytecode-hashes.json`, which `script/check-verification.sh` checks against a build of this repository:
 
 ```
-cast keccak $(cast code 0x9a1D8Ba7c4C54e6433a23f7CB3Baa4b024E2927e --rpc-url $BASE_RPC_URL)
+cast keccak $(cast code 0x83C583c517c65B413F84e3Ed2c601EF2d4c587E0 --rpc-url $BASE_RPC_URL)
 jq -j .deployment.runtimeKeccak verification/bytecode-hashes.json
 ```
 

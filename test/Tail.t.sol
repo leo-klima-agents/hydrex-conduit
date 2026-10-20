@@ -13,7 +13,6 @@ contract TailTest is ConduitTestBase {
     address internal constant HIGH = address(type(uint160).max);
     address internal constant LOW2 = address(0x200);
     address internal constant HIGH2 = address(type(uint160).max - 1);
-    int256 internal constant EDGE = 886_772;
     int256 internal constant DOUBLE = 6932;
 
     function _usdcTail(address tail, uint256 core, uint256 tailAmount) internal returns (address pool, MockPlugin p) {
@@ -131,25 +130,30 @@ contract TailTest is ConduitTestBase {
         assertEq(conduit.poolValue(pool), 100e18);
     }
 
-    function test_tail_readsALaggedTwap() public {
+    function test_tail_readsTheLastWindow() public {
         (address pool, MockPlugin p) = _usdcTail(LOW, 100e6, 100e6);
         uint32[] memory ago = new uint32[](2);
-        ago[0] = 1802;
-        ago[1] = 2;
+        ago[0] = 1800;
         vm.expectCall(address(p), abi.encodeCall(IVolatilityOracle.getTimepoints, (ago)), 1);
         conduit.poolValue(pool);
-        assertEq(conduit.TWAP_WINDOW(), 1800);
-        assertEq(conduit.TWAP_LAG(), 2);
     }
 
-    function test_tail_meanTickRoundsTowardZero() public {
-        (address pool, MockPlugin p) = _usdcTail(LOW, 1000e6, 100e6);
-        p.setCumulatives(0, -1799);
-        assertEq(conduit.poolValue(pool), 1100e18);
-        p.setCumulatives(0, -1800);
-        assertEq(conduit.poolValue(pool), 1000e18 + 99_990_000e12);
-        p.setCumulatives(2 ** 55 - 1, 2 ** 55 - 1 - 1800);
-        assertEq(conduit.poolValue(pool), 1000e18 + 99_990_000e12);
+    function test_tail_meanTickRoundsDown() public {
+        (address low, MockPlugin pl) = _usdcTail(LOW, 1000e6, 100e6);
+        (address high, MockPlugin ph) = _usdcTail(HIGH, 1000e6, 100e6);
+        uint256 down = 1000e18 + 99_990_000e12;
+        pl.setCumulatives(0, 1799);
+        ph.setCumulatives(0, -1799);
+        assertEq(conduit.poolValue(low), 1100e18);
+        assertEq(conduit.poolValue(high), 1100e18);
+        pl.setCumulatives(0, -1799);
+        ph.setCumulatives(0, 1799);
+        assertEq(conduit.poolValue(low), down);
+        assertEq(conduit.poolValue(high), down);
+        pl.setCumulatives(0, -1800);
+        assertEq(conduit.poolValue(low), down);
+        pl.setCumulatives(2 ** 55 - 1, 2 ** 55 - 1 - 1800);
+        assertEq(conduit.poolValue(low), down);
     }
 
     function test_tail_badPluginsCountZero() public {
@@ -173,7 +177,7 @@ contract TailTest is ConduitTestBase {
         (address pool, MockPlugin p) = _usdcTail(LOW, 100e6, 100e6);
         p.setMode(MockPlugin.Mode.ReturnBomb);
         (bool ok, bytes memory ret) =
-            address(p).staticcall{gas: 130_000}(abi.encodeCall(MockPlugin.getTimepoints, (new uint32[](2))));
+            address(p).staticcall{gas: conduit.TWAP_GAS()}(abi.encodeCall(MockPlugin.getTimepoints, (new uint32[](2))));
         assertTrue(ok);
         assertEq(ret.length, 100_000);
         assertEq(conduit.poolValue(pool), 100e18);
@@ -191,11 +195,12 @@ contract TailTest is ConduitTestBase {
 
     function test_tail_edgeTicksCountZero() public {
         (address pool, MockPlugin p) = _usdcTail(LOW, 100e6, 2 ** 200);
+        int256 edge = conduit.TICK_EDGE();
         int256[2] memory signs = [int256(1), -1];
         for (uint256 i; i < 2; ++i) {
-            p.setTick(signs[i] * (EDGE - 1));
+            p.setTick(signs[i] * (edge - 1));
             assertEq(conduit.poolValue(pool), 200e18);
-            p.setTick(signs[i] * EDGE);
+            p.setTick(signs[i] * edge);
             assertEq(conduit.poolValue(pool), 100e18);
             p.setTick(signs[i] * 887_272);
             assertEq(conduit.poolValue(pool), 100e18);
@@ -204,7 +209,8 @@ contract TailTest is ConduitTestBase {
 
     function test_tail_noOverflowAtBounds() public {
         uint256 core = 1e36;
-        int256[5] memory ticks = [-(EDGE - 1), int256(-1), 0, 1, EDGE - 1];
+        int256 edge = conduit.TICK_EDGE();
+        int256[5] memory ticks = [-(edge - 1), int256(-1), 0, 1, edge - 1];
         uint256[4] memory amounts = [uint256(1), 2 ** 128 - 1, 2 ** 128, type(uint256).max];
         for (uint256 i; i < ticks.length; ++i) {
             for (uint256 j; j < amounts.length; ++j) {
@@ -233,7 +239,7 @@ contract TailTest is ConduitTestBase {
 
     function testFuzz_tail_matchesReference(uint256 amount, int256 tick, uint256 coreAmount, bool low) public {
         amount = bound(amount, 0, 2 ** 120);
-        tick = bound(tick, -600_000, 600_000);
+        tick = bound(tick, 1 - conduit.TICK_EDGE(), conduit.TICK_EDGE() - 1);
         coreAmount = bound(coreAmount, 1, 1e30);
         address tail = low ? LOW : HIGH;
         (address pool,) = _tailPool(address(usdc), tail, tick);
@@ -243,13 +249,13 @@ contract TailTest is ConduitTestBase {
         uint256 expected = Reference.tailValue(amount, tick, 1e12, 1, core);
         uint256 value = conduit.poolValue(pool);
         assertLe(value, 2 * core);
-        assertApproxEqAbs(value - core, expected, expected / 1e12 + 1e12);
+        assertApproxEqAbs(value - core, expected, expected / 1e6 + 1e12);
     }
 
     function testFuzz_tail_boundedOverTheWholeTickRange(uint256 amount, int256 tick, uint256 coreAmount, bool low)
         public
     {
-        tick = bound(tick, -(EDGE - 1), EDGE - 1);
+        tick = bound(tick, 1 - conduit.TICK_EDGE(), conduit.TICK_EDGE() - 1);
         coreAmount = bound(coreAmount, 1, 1e36);
         (address tail, address other) = low ? (LOW, LOW2) : (HIGH, HIGH2);
         (address pool,) = _tailPool(address(usdc), tail, tick);

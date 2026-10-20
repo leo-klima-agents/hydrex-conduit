@@ -52,7 +52,8 @@ library Reference {
     {
         uint256 r = ratio(tick < 0 ? uint256(-tick) : uint256(tick));
         uint256 core = tick <= 0 ? mulDiv(amount, r, 1 << 128) : mulDiv(amount, 1 << 128, r);
-        uint256 usd = mulDiv(core, perUnit, div);
+        if (core > type(uint256).max / perUnit) return cap;
+        uint256 usd = core * perUnit / div;
         return usd < cap ? usd : cap;
     }
 }

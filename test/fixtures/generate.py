@@ -30,8 +30,7 @@ PRICED = [
     ("0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42", "0xDAe398520e2B67cd3f27aeF9Cf14D93D927f8250", 10**4, 1),
 ]
 TWAP_WINDOW = 1800
-TWAP_LAG = 2
-TICK_EDGE = 886_772
+TICK_EDGE = 740_000
 RATIOS = [
     0xFFF97272373D413259A46990580E2139,
     0xFFF2E50F5F656932EF12357CF3C7FDCB,
@@ -135,7 +134,7 @@ def valid_twap(words):
 
 
 def twap_gas(block, plugins):
-    data = selector("getTimepoints(uint32[])") + "".join(word(a) for a in [32, 2, TWAP_WINDOW + TWAP_LAG, TWAP_LAG])
+    data = selector("getTimepoints(uint32[])") + "".join(word(a) for a in [32, 2, TWAP_WINDOW, 0])
     res = rpc([("eth_estimateGas", [{"from": DEAD, "to": p, "data": data}, hex(block)]) for p in plugins], True)
     return [0 if r is None else int(r, 16) for r in res]
 
@@ -162,7 +161,7 @@ def tails(block, epoch, live, intl, answers):
     plugins = calls(block, [(live[k][0], "plugin()", []) for k, _, _, _ in candidates])
     twaps = calls(
         block,
-        [(addr(p[0]), "getTimepoints(uint32[])", [32, 2, TWAP_WINDOW + TWAP_LAG, TWAP_LAG]) for p in plugins],
+        [(addr(p[0]), "getTimepoints(uint32[])", [32, 2, TWAP_WINDOW, 0]) for p in plugins],
         True,
     )
     out = {}

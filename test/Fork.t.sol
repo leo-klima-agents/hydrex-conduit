@@ -67,6 +67,12 @@ interface IApprove {
     function approve(address spender, uint256 amount) external returns (bool);
 }
 
+interface IAccessControlEnumerable {
+    function POOLS_ADMINISTRATOR_ROLE() external view returns (bytes32);
+    function getRoleMemberCount(bytes32 role) external view returns (uint256);
+    function getRoleMember(bytes32 role, uint256 index) external view returns (address);
+}
+
 interface IAlgebraPoolExtra {
     function globalState() external view returns (uint160, int24, uint16, uint8, uint16, bool);
     function setPlugin(address plugin) external;
@@ -91,7 +97,7 @@ contract ForkTest is Test {
     bytes32 internal constant IMPL_SLOT = 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
     uint256 internal constant WEIGHTS_PER_EPOCH_SLOT = 22;
     uint256 internal constant REWARD_DATA_SLOT = 53;
-    int256 internal constant TICK_EDGE = 886_772;
+    uint256 internal constant NONE = type(uint256).max;
     uint256 internal constant TX_GAS_CAP = 2 ** 24;
 
     address internal constant VOTER = 0xc69E3eF39E3fFBcE2A1c570f8d3ADF76909ef17b;
@@ -111,6 +117,8 @@ contract ForkTest is Test {
     address internal constant SEQUENCER_FEED = 0xBCF85224fc0756B9Fa45aA7892530B47e10b6433;
     address internal constant ALGEBRA_FACTORY = 0x36077D39cdC65E1e3FB65810430E5b2c4D5fA29E;
     address internal constant ALGEBRA_OWNER = 0x74266f2b206D1359B83fc74949EF07176FB3AE03;
+    address internal constant POOLS_ADMIN_CONTRACT = 0x00EdE53f39415E64c78eebD02AD9D383b3A0C0F1;
+    address internal constant POOLS_ADMIN_ACCOUNT = 0xDeaD1F5aF792afc125812E875A891b038f888258;
     address internal constant PLUGIN_BEACON = 0x106937fC03212A762be17D529893A32E47bA13a1;
     address internal constant PLUGIN_IMPL = 0xAF11628e68e8bD45375560E549Ab8411FA034D4F;
     address internal constant PLUGIN_FACTORY = 0xa8dD4C05796801C734E99d5582E90e3a8bD88194;
@@ -211,12 +219,12 @@ contract ForkTest is Test {
         assertEq(recorded, total);
     }
 
-    function _isPriced(address token) internal view returns (bool) {
+    function _pricedIndex(address token) internal view returns (uint256) {
         ImmutableVeTokenConduit.PricedToken[] memory p = d.pricedTokens();
         for (uint256 i; i < p.length; ++i) {
-            if (p[i].token == token) return true;
+            if (p[i].token == token) return i;
         }
-        return false;
+        return NONE;
     }
 
     function _replayMarket(uint256 epoch) internal returns (uint256 tails) {
@@ -224,7 +232,7 @@ contract ForkTest is Test {
         address[] memory tokens = fx.readAddressArray(".market.tokens");
         uint256[] memory amounts = fx.readUintArray(".market.amounts");
         for (uint256 i; i < bribes.length; ++i) {
-            if (_isPriced(tokens[i])) {
+            if (_pricedIndex(tokens[i]) != NONE) {
                 _notify(bribes[i], tokens[i], amounts[i]);
             } else {
                 _credit(bribes[i], tokens[i], amounts[i], epoch);
@@ -244,12 +252,9 @@ contract ForkTest is Test {
     }
 
     function _amountWorth(address token, uint256 usd) internal view returns (uint256) {
-        uint256[] memory answers = fx.readUintArray(".answers");
-        for (uint256 i; i < answers.length; ++i) {
-            (address t,,, uint256 mul, uint256 div) = conduit.pricedTokens(i);
-            if (t == token) return usd * div / (answers[i] * mul) + 1;
-        }
-        revert("not priced");
+        uint256 i = _pricedIndex(token);
+        (,,, uint256 mul, uint256 div) = conduit.pricedTokens(i);
+        return usd * div / (fx.readUintArray(".answers")[i] * mul) + 1;
     }
 
     function _feeBribe(address pool) internal view returns (address) {
@@ -258,10 +263,9 @@ contract ForkTest is Test {
 
     function _twap(address pool) internal view returns (int256) {
         uint32[] memory ago = new uint32[](2);
-        ago[0] = 1802;
-        ago[1] = 2;
+        ago[0] = conduit.TWAP_WINDOW();
         (int56[] memory cumulatives,) = IVolatilityOracle(IAlgebraPool(pool).plugin()).getTimepoints(ago);
-        return (int256(cumulatives[1]) - cumulatives[0]) / 1800;
+        return (int256(cumulatives[1]) - cumulatives[0]) / int256(uint256(ago[0]));
     }
 
     function _repeat(address[] memory tokens, uint256 n) internal pure returns (address[][] memory r) {
@@ -310,7 +314,8 @@ contract ForkTest is Test {
         assertEq(uint256(vm.load(bribe, _rewardSlot(token, epoch))), recorded);
     }
 
-    function test_pin_algebra() public view {
+    function test_pin_algebra() public {
+        _deploy();
         assertEq(d.ALGEBRA_FACTORY(), ALGEBRA_FACTORY);
         assertEq(ALGEBRA_FACTORY.codehash, ALGEBRA_FACTORY_CODEHASH);
         assertEq(IOwned(ALGEBRA_FACTORY).owner(), ALGEBRA_OWNER);
@@ -318,6 +323,13 @@ contract ForkTest is Test {
         assertEq(IOwned(PLUGIN_BEACON).owner(), PLUGIN_FACTORY);
         assertEq(PLUGIN_BEACON.codehash, PLUGIN_BEACON_CODEHASH);
         assertEq(PLUGIN_IMPL.codehash, PLUGIN_IMPL_CODEHASH);
+        IAccessControlEnumerable roles = IAccessControlEnumerable(ALGEBRA_FACTORY);
+        bytes32 admins = roles.POOLS_ADMINISTRATOR_ROLE();
+        assertEq(roles.getRoleMemberCount(admins), 2);
+        assertEq(roles.getRoleMember(admins, 0), POOLS_ADMIN_CONTRACT);
+        assertEq(roles.getRoleMember(admins, 1), POOLS_ADMIN_ACCOUNT);
+        assertEq(roles.getRoleMemberCount(bytes32(0)), 1);
+        assertEq(roles.getRoleMember(bytes32(0), 0), ALGEBRA_OWNER);
 
         address[] memory pools = fx.readAddressArray(".gasPools");
         address[] memory cores = fx.readAddressArray(".gasCores");
@@ -326,11 +338,11 @@ contract ForkTest is Test {
             address fees = _feeBribe(pools[i]);
             (address a, address b) = (IBribe(fees).rewardTokens(0), IBribe(fees).rewardTokens(1));
             assertTrue((a == cores[i] && b == tails[i]) || (a == tails[i] && b == cores[i]));
-            assertTrue(_isPriced(cores[i]));
-            assertFalse(_isPriced(tails[i]));
+            assertTrue(_pricedIndex(cores[i]) != NONE);
+            assertEq(_pricedIndex(tails[i]), NONE);
             assertEq(IAlgebraFactory(ALGEBRA_FACTORY).poolByPair(a, b), pools[i]);
             int256 tick = _twap(pools[i]);
-            assertLt(tick < 0 ? -tick : tick, TICK_EDGE);
+            assertLt(tick < 0 ? -tick : tick, conduit.TICK_EDGE());
         }
     }
 
@@ -464,12 +476,19 @@ contract ForkTest is Test {
         assertLt(total, TX_GAS_CAP);
     }
 
-    // Replaces a 20-pool vote with 20 other pools in the fixture's epoch, where the pools with the most expensive
-    // plugins have live timepoints, within a Base transaction's gas limit, and returns the second vote's gas
+    // Replaces a 20-pool vote with 20 other pools within a Base transaction's gas limit, and returns the second vote's
+    // gas. Honest plugins read live timepoints in the fixture's epoch. Gas burners use their whole budget in a fresh
+    // epoch, where the Voter writes new storage, which is the most a vote can cost.
     function _fullVoteGas(bool hostile) internal returns (uint256) {
         _deploy();
-        uint256 epoch = fx.readUint(".epoch");
-        vm.mockCall(VE, abi.encodeCall(IVotingEscrow.getPastVotes, (address(conduit), epoch)), abi.encode(1e27));
+        uint256 epoch;
+        if (hostile) {
+            _optIn();
+            epoch = _nextEpoch();
+        } else {
+            epoch = fx.readUint(".epoch");
+            vm.mockCall(VE, abi.encodeCall(IVotingEscrow.getPastVotes, (address(conduit), epoch)), abi.encode(1e27));
+        }
         address[] memory candidates = fx.readAddressArray(".gasPools");
         address[] memory cores = fx.readAddressArray(".gasCores");
         address[] memory tails = fx.readAddressArray(".gasTails");
@@ -561,8 +580,7 @@ contract ForkTest is Test {
         uint256 cap = conduit.poolValue(pool);
         assertGt(cap, 0);
 
-        uint256 k;
-        while (d.pricedTokens()[k].token != core) ++k;
+        uint256 k = _pricedIndex(core);
         (,,, uint256 mul, uint256 div) = conduit.pricedTokens(k);
         uint256 perUnit = fx.readUintArray(".answers")[k] * mul;
         int256 tick = tail < core ? _twap(pool) : -_twap(pool);
@@ -595,7 +613,7 @@ contract ForkTest is Test {
         assertEq(IAlgebraFactory(ALGEBRA_FACTORY).poolByPair(USDC, vault), BROKEN_POOL);
         (, int24 spot,,,,) = IAlgebraPoolExtra(BROKEN_POOL).globalState();
         assertEq(spot, -887_272);
-        assertLe(_twap(BROKEN_POOL), -TICK_EDGE);
+        assertLe(_twap(BROKEN_POOL), -conduit.TICK_EDGE());
 
         _credit(fees, USDC, 100e6, epoch);
         uint256 value = conduit.poolValue(BROKEN_POOL);

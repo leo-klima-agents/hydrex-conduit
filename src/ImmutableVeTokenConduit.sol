@@ -46,14 +46,13 @@ contract ImmutableVeTokenConduit {
     uint256 public constant MIN_GAIN = 1e18;
     uint256 public constant SEQUENCER_GRACE = 3600;
     uint32 public constant TWAP_WINDOW = 1800;
-    uint32 public constant TWAP_LAG = 2;
+    uint256 public constant TWAP_GAS = 120_000;
+    // 1.0001^740000 is about 10^32, and inside it _ratio is accurate to a millionth
+    int256 public constant TICK_EDGE = 740_000;
     uint256 private constant WEEK = 604800;
     uint256 private constant MAX_PRICED_TOKENS = 4;
     uint8 private constant CLAIM_REDIRECT_APPROVAL = 3;
     uint8 private constant VOTING_DELEGATE = 5;
-    uint256 private constant TWAP_GAS = 130_000;
-    // within Algebra's largest tick spacing (500) of either end of its tick range (±887,272)
-    int256 private constant TICK_EDGE = 886_772;
     uint256 private constant NONE = type(uint256).max;
 
     address public immutable voter;
@@ -89,7 +88,6 @@ contract ImmutableVeTokenConduit {
     error Duplicate(address account);
     error NoRewardContracts();
     error BadFeed(address feed);
-    error BadFactory(address factory);
     error SequencerDown();
     error EpochStale();
     error NoVotingPower();
@@ -120,9 +118,7 @@ contract ImmutableVeTokenConduit {
             voter_ == address(0) || veToken_ == address(0) || sequencerFeed_ == address(0)
                 || algebraFactory_ == address(0)
         ) revert ZeroAddress();
-        (bool ok, bytes memory ret) =
-            algebraFactory_.staticcall(abi.encodeCall(IAlgebraFactory.poolByPair, (address(0), address(0))));
-        if (!ok || ret.length != 32 || abi.decode(ret, (uint256)) >> 160 != 0) revert BadFactory(algebraFactory_);
+        IAlgebraFactory(algebraFactory_).poolByPair(address(0), address(0));
         voter = voter_;
         veToken = veToken_;
         sequencerFeed = sequencerFeed_;
@@ -300,12 +296,13 @@ contract ImmutableVeTokenConduit {
         if (IAlgebraFactory(algebraFactory).poolByPair(a, b) != pool) return usd;
         (, uint256 amount,) = IBribe(fees).rewardData(tail, ctx.epoch);
         if (amount == 0) return usd;
-        (bool ok, int256 tick) = _twapTick(pool);
-        if (!ok) return usd;
         Oracle memory o = ctx.oracles[k];
-        return usd + _tailValue(tail < o.token ? tick : -tick, amount, ctx.answers[k] * o.mul, o.div, usd);
+        (bool ok, int256 tick) = _twapTick(pool, tail > o.token);
+        if (!ok) return usd;
+        return usd + _tailValue(tick, amount, ctx.answers[k] * o.mul, o.div, usd);
     }
 
+    // one raw unit of the tail is worth 1.0001^tick raw units of the core token
     function _tailValue(int256 tick, uint256 amount, uint256 perUnit, uint256 div, uint256 cap)
         private
         pure
@@ -315,6 +312,7 @@ contract ImmutableVeTokenConduit {
         uint256 r = _ratio(uint256(tick < 0 ? -tick : tick));
         uint256 core;
         if (tick <= 0) {
+            // amount in 128-bit halves, so that neither product overflows
             core = (amount >> 128) * r + ((amount & type(uint128).max) * r >> 128);
         } else {
             core = amount > type(uint128).max ? type(uint256).max : (amount << 128) / r;
@@ -323,13 +321,14 @@ contract ImmutableVeTokenConduit {
         return core * perUnit / div;
     }
 
-    function _twapTick(address pool) private view returns (bool ok, int256 tick) {
+    // the tail's average tick over the last TWAP_WINDOW seconds, rounded down, against the tail
+    function _twapTick(address pool, bool tailIsToken1) private view returns (bool ok, int256 tick) {
         address plugin = IAlgebraPool(pool).plugin();
         uint32[] memory ago = new uint32[](2);
-        ago[0] = TWAP_WINDOW + TWAP_LAG;
-        ago[1] = TWAP_LAG;
+        ago[0] = TWAP_WINDOW;
         bytes memory data = abi.encodeCall(IVolatilityOracle.getTimepoints, (ago));
         bytes memory ret = new bytes(256);
+        // caps the plugin's gas, and copies at most 256 bytes of its answer however much it returns
         assembly ("memory-safe") {
             ok := staticcall(TWAP_GAS, plugin, add(data, 0x20), mload(data), add(ret, 0x20), 256)
             ok := and(ok, eq(returndatasize(), 256))
@@ -339,7 +338,10 @@ contract ImmutableVeTokenConduit {
             abi.decode(ret, (uint256, uint256, uint256, int256, int256));
         // forge-lint: disable-next-line(unsafe-typecast)
         if (offset != 64 || length != 2 || start != int56(start) || end != int56(end)) return (false, 0);
-        tick = (end - start) / int256(uint256(TWAP_WINDOW));
+        int256 sum = tailIsToken1 ? start - end : end - start;
+        int256 window = int256(uint256(TWAP_WINDOW));
+        tick = sum / window;
+        if (sum < 0 && sum % window != 0) --tick;
         ok = tick > -TICK_EDGE && tick < TICK_EDGE;
     }
 
