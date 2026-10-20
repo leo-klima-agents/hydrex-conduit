@@ -45,7 +45,7 @@ library Reference {
         }
     }
 
-    function tailValue(uint256 amount, int256 tick, uint256 perUnit, uint256 div, uint256 cap)
+    function tailValue(int256 tick, uint256 amount, uint256 perUnit, uint256 div, uint256 cap)
         internal
         pure
         returns (uint256)

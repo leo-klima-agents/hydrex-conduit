@@ -118,8 +118,9 @@ conduit first.
 `EpochStale` until someone calls `update_period()` on the Hydrex minter at the start of an epoch, with
 `NoVotingPower` if the conduit had no delegated votes when the epoch started, and with `SequencerDown` while the
 sequencer is down or in the hour after it comes back. The Voter accepts one vote per block. Replacing a vote of 20
-pools with 20 others costs about 12.2M gas on the pools whose plugins cost the most to read, and at most about 15.8M
-whatever the plugins do, within Base's limit of 16,777,216 gas per transaction.
+pools with 20 others costs about 12.2M gas on the pools whose plugins cost the most to read, about 1M more in an
+epoch's first votes, when the Voter writes new storage, and at most about 15.8M whatever the plugins do, within Base's
+limit of 16,777,216 gas per transaction.
 
 ### Claiming rewards
 
@@ -155,11 +156,15 @@ address: it makes the whole claim revert.
   plugin on Base needs about 104,000 gas, so this doesn't happen today. If one grows heavier, its tail can count in one
   call and not in another, and `score`, `currentScore` and `poolValue` can then disagree with `vote`.
 - Pushing a tail token's price down removes it from the vote in force, which can let a worse proposal win until the
-  price recovers and someone proposes again.
-- Algebra's factory owner and pool administrators can replace a pool's plugin or change its configuration, a plugin
-  can change its own pool's configuration, and a plugin factory can upgrade the upgradeable plugins. A broken or
-  hostile plugin or configuration can make a pool's tail count up to its cap, or not at all. A plugin gets at most
-  `TWAP_GAS` per call, so it can't make a vote too expensive for a Base transaction.
+  price recovers and someone proposes again. Pushing it up on the vote in force's pools can keep a worse vote in force
+  the same way, but only against proposals worth less than about twice what that vote really earns.
+- Two parties, Algebra's factory owner `0x74266f2b206D1359B83fc74949EF07176FB3AE03` and the account
+  `0xDeaD1F5aF792afc125812E875A891b038f888258`, can replace any pool's plugin, change its configuration, or upgrade the
+  upgradeable plugins, and the factory owner can give those rights to others. A plugin can also change its own pool's
+  configuration, and anyone can replace the plugin of a custom pool they create through Algebra's entry point, which is
+  why only a pair's base pool counts. A broken or hostile plugin or configuration can make a pool's tail count up to its
+  cap, or not at all. A plugin gets at most `TWAP_GAS` per call, so it can't make a vote too expensive for a Base
+  transaction.
 - Scores use other voters' current votes. If they change theirs later, the vote in force may no longer be the best,
   and anyone can propose a better one. A vote accepted in an epoch's last block can't be replaced.
 - A token that charges a fee on transfers is charged twice on its way through the conduit.

@@ -246,7 +246,7 @@ contract TailTest is ConduitTestBase {
         _fee(pool, address(usdc), coreAmount);
         _fee(pool, tail, amount);
         uint256 core = coreAmount * 1e12;
-        uint256 expected = Reference.tailValue(amount, tick, 1e12, 1, core);
+        uint256 expected = Reference.tailValue(tick, amount, 1e12, 1, core);
         uint256 value = conduit.poolValue(pool);
         assertLe(value, 2 * core);
         assertApproxEqAbs(value - core, expected, expected / 1e6 + 1e12);

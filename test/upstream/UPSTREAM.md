@@ -29,6 +29,8 @@ them and `foundry.toml` skips them. `script/check-signatures.sh` checks that eve
 | Algebra pool (`AlgebraPool`), WETH/TIBBIR's | `0xB3f0828eB3375B609b49E9Fb959472a29cD6E49a` | [match](https://repo.sourcify.dev/8453/0xB3f0828eB3375B609b49E9Fb959472a29cD6E49a), 2025-10-11 | 0.8.20, 0 runs |
 | Plugin (`HydrexBasePlugin`), CREATOR/WETH's | `0x58d766bfBD60a02425E706596A0111E05Fd6092D` | [match](https://repo.sourcify.dev/8453/0x58d766bfBD60a02425E706596A0111E05Fd6092D), 2026-06-24 | 0.8.20, 200 runs |
 | Upgradeable plugin implementation (`AlgebraUpgradeablePlugin`) | `0xAF11628e68e8bD45375560E549Ab8411FA034D4F` | [match](https://repo.sourcify.dev/8453/0xAF11628e68e8bD45375560E549Ab8411FA034D4F), 2026-05-05 | 0.8.20, 0 runs |
+| Plugin factory implementation (`AlgebraUpgradeablePluginFactory`) | `0xde57C7d4d2E98DaFb7cDC59E9c88d28f543AE922` | [match](https://repo.sourcify.dev/8453/0xde57C7d4d2E98DaFb7cDC59E9c88d28f543AE922), 2026-02-19 | 0.8.20, 0 runs |
+| Custom-pool entry point (`AlgebraCustomPoolEntryPoint`) | `0x00EdE53f39415E64c78eebD02AD9D383b3A0C0F1` | [match](https://repo.sourcify.dev/8453/0x00EdE53f39415E64c78eebD02AD9D383b3A0C0F1), 2026-06-21 | 0.8.20, 1,000,000 runs |
 
 Sourcify has the VotingEscrow implementation and the Algebra contracts as a "match", not an "exact match": the bytecode
 matches but the metadata hash differs, so comments in their sources may differ from what was compiled. Every gauged
@@ -78,11 +80,13 @@ jq -j '.sources["@cryptoalgebra/volatility-oracle-plugin/contracts/interfaces/IV
 | `TREASURY`, a Safe 1.5.0 proxy (2 of 3) | `0x450c72de8c0079B49AcedF294a13011bd09D125B` | `0x4e381985ca68b3e5d27b4425fa581c19cf33146d3f887a3cfca96f55528ea46f` |
 | Algebra factory | `0x36077D39cdC65E1e3FB65810430E5b2c4D5fA29E` | `0x6f54720c3eb4326e8cf846308b98ab0c0d070a441ca11ba8cd00be0256af7084` |
 | Algebra factory owner, and its only default admin | `0x74266f2b206D1359B83fc74949EF07176FB3AE03` | |
-| Algebra pool administrator (`POOLS_ADMINISTRATOR_ROLE`), a contract | `0x00EdE53f39415E64c78eebD02AD9D383b3A0C0F1` | |
-| Algebra pool administrator (`POOLS_ADMINISTRATOR_ROLE`), an EIP-7702 account | `0xDeaD1F5aF792afc125812E875A891b038f888258` | |
+| Algebra custom-pool entry point, a pool administrator and the only `CUSTOM_POOL_DEPLOYER` | `0x00EdE53f39415E64c78eebD02AD9D383b3A0C0F1` | `0x200c23737ade01ef361202814d1fb721b9dc811cf5f4345875c99770384ec3b2` |
+| Algebra pool and plugin factory administrator (`POOLS_ADMINISTRATOR_ROLE`, `ALGEBRA_BASE_PLUGIN_FACTORY_ADMINISTRATOR`), an EIP-7702 account | `0xDeaD1F5aF792afc125812E875A891b038f888258` | |
 | Upgradeable plugin beacon | `0x106937fC03212A762be17D529893A32E47bA13a1` | `0x2105a3ca212415ea232cb45c3d9a073ea881378afadc776198c59f79d018f97e` |
 | Upgradeable plugin implementation (`implementation()`) | `0xAF11628e68e8bD45375560E549Ab8411FA034D4F` | `0x51aab6d45348f1b652884dcf8e4eaf06c54de68760f64f8487c5d670fc3488e4` |
-| Upgradeable plugin beacon owner, a plugin factory | `0xa8dD4C05796801C734E99d5582E90e3a8bD88194` | |
+| Upgradeable plugin beacon owner, a plugin factory proxy | `0xa8dD4C05796801C734E99d5582E90e3a8bD88194` | |
+| Plugin factory implementation (ERC-1967 slot) | `0xde57C7d4d2E98DaFb7cDC59E9c88d28f543AE922` | `0xdda4b448b3ffa656fa5fdf88c424df94489a500023f889669e8632767edba9e5` |
+| Plugin factory proxy admin (ERC-1967 slot), owned by the Algebra factory owner | `0x2689EF6a746f1b253CD772Fb045a7563505bEd00` | `0x8b4085015bf2b807a59b2290edcd3886b049469b05572e4b9e1b7fc0e430d9c9` |
 | USDC/VAULT, an Algebra pool priced at the end of the tick range | `0xa69256ea019648815B1a3CE1C83C0D00a288dfc7` | |
 | A USDC ERC-4626 vault's gauged pool | `0xBEEFE94c8aD530842bfE7d8B397938fFc1cb83b2` | |
 
@@ -176,9 +180,20 @@ files are in the sources on Sourcify of the contract named in the implementation
     sets flags of it, or clears the after-swap flag (`HydrexBasePlugin.sol` lines 39, 67 and 115,
     `VolatilityOraclePlugin.sol` line 50 and `FarmingProxyPlugin.sol` lines 58 and 78; `AlgebraUpgradeablePlugin.sol`
     lines 135, 178 and 245 and `FarmingProxyPluginImplementation.sol` lines 53-59).
-    The upgradeable plugins follow a beacon owned by a plugin factory, and delegate their oracle to a separate
-    implementation (`VolatilityOracleConnector.sol` line 41). `test/Fork.t.sol` pins the factory's administrators,
-    checks that a stranger can't replace a plugin, and that a replaced plugin only stops the tail from counting.
+    One pool administrator is Algebra's custom-pool entry point, the factory's only `CUSTOM_POOL_DEPLOYER`
+    (`AlgebraFactory.sol` lines 105-114). Anyone can create a custom pool through it, then replace that pool's plugin
+    or change its config, but only on a pool that `customPoolByPair(msg.sender, token0, token1)` returns
+    ([`AlgebraCustomPoolEntryPoint.sol`](https://repo.sourcify.dev/8453/0x00EdE53f39415E64c78eebD02AD9D383b3A0C0F1)
+    lines 26-36, 69-76 and 83-87). A custom pool's address comes from a different CREATE2 salt than its pair's base
+    pool, and `poolByPair` only holds base pools (`AlgebraFactory.sol` lines 88-97, 121 and 150-151), so the entry
+    point can't act on a pool the conduit counts. The upgradeable plugins follow a beacon owned by a plugin factory,
+    which upgrades it for the Algebra factory's owner and holders of its `ALGEBRA_BASE_PLUGIN_FACTORY_ADMINISTRATOR`
+    role ([`AlgebraUpgradeablePluginFactory.sol`](https://repo.sourcify.dev/8453/0xde57C7d4d2E98DaFb7cDC59E9c88d28f543AE922)
+    lines 56-60 and 242-244). The plugin factory is itself a proxy, administered by a proxy admin that the Algebra
+    factory's owner owns. The upgradeable plugins delegate their oracle to a separate implementation
+    (`VolatilityOracleConnector.sol` line 41). `test/Fork.t.sol` pins the factory's roles and the plugin factory's
+    administration, and checks that a stranger can't replace a plugin, that a custom pool's deployer can't touch a
+    base pool, and that a replaced plugin only stops the tail from counting.
 14. **Storage.** `rewardData` is at slot 53 of a bribe's storage. `test/Fork.t.sol` writes it to replay deposits of
     tokens it can't mint, and checks the slot against a real deposit.
 
