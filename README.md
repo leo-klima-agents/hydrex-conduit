@@ -6,9 +6,9 @@ least $1 more in bribes. Anyone can also claim a delegator's rewards through it:
 owner and sends a 1% fee to a fixed treasury.
 
 The contract has no owner, no settings and no upgrade path. All of it is in
-[`src/ImmutableVeTokenConduit.sol`](src/ImmutableVeTokenConduit.sol). This is version 2, which also counts trading fees
-in tokens that have no Chainlink feed. It will be deployed on Base at `0x692c323B425A9DfeebE302F56168a7798D93EAC5`.
-Version 1, at
+[`src/ImmutableVeTokenConduit.sol`](src/ImmutableVeTokenConduit.sol), deployed on Base at
+[`0x692c323B425A9DfeebE302F56168a7798D93EAC5`](https://basescan.org/address/0x692c323B425A9DfeebE302F56168a7798D93EAC5#code).
+This is version 2, which also counts trading fees in tokens that have no Chainlink feed. Version 1, at
 [`0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B`](https://basescan.org/address/0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B#code),
 keeps working as it is.
 
@@ -156,7 +156,10 @@ address: it makes the whole claim revert.
 
 ## Deployment
 
-Version 2 isn't deployed yet. `script/Deploy.s.sol` deploys it at the address below.
+Deployed on 2026-10-20 by transaction
+[`0x70ad…0eba`](https://basescan.org/tx/0x70addba92788cc910826cbcbfe266168e95c4f63e37913bbe5d7e86db9000eba).
+The source is verified on [BaseScan](https://basescan.org/address/0x692c323B425A9DfeebE302F56168a7798D93EAC5#code) and
+[Sourcify](https://repo.sourcify.dev/8453/0x692c323B425A9DfeebE302F56168a7798D93EAC5) as an exact match.
 
 | | |
 |---|---|
@@ -174,7 +177,7 @@ Version 2 isn't deployed yet. `script/Deploy.s.sol` deploys it at the address be
 Version 1 was deployed on 2026-10-19 by transaction
 [`0x3fb9…4c00`](https://basescan.org/tx/0x3fb98ef128fcda6d9a59ac2d6b293b4ae2ccdb6e1c634d53651a0761867c4d00), with salt
 `keccak256("metadex.cafe/ImmutableVeTokenConduit/v1")`, and is verified on BaseScan as an exact match. Its source is at
-commit `c83a8d1`, and `broadcast/` holds its deployment until version 2 is deployed.
+commit `c83a8d1`.
 
 Deployment steps:
 
