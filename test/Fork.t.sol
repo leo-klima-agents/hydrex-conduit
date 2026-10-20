@@ -72,6 +72,12 @@ interface IAlgebraPoolExtra {
     function setPlugin(address plugin) external;
 }
 
+contract GasBurner {
+    fallback() external {
+        for (uint256 i; i < type(uint256).max; ++i) {}
+    }
+}
+
 interface IFeed {
     function description() external view returns (string memory);
     function decimals() external view returns (uint8);
@@ -86,6 +92,7 @@ contract ForkTest is Test {
     uint256 internal constant WEIGHTS_PER_EPOCH_SLOT = 22;
     uint256 internal constant REWARD_DATA_SLOT = 53;
     int256 internal constant TICK_EDGE = 886_772;
+    uint256 internal constant TX_GAS_CAP = 2 ** 24;
 
     address internal constant VOTER = 0xc69E3eF39E3fFBcE2A1c570f8d3ADF76909ef17b;
     address internal constant VOTER_IMPL = 0x9CB9fc7D128F89CBD43Bbfd89dBAb05D1FA17233;
@@ -446,16 +453,30 @@ contract ForkTest is Test {
     }
 
     function test_vote_worstCaseGas() public {
+        uint256 total = _fullVoteGas(false);
+        emit log_named_uint("worst-case vote, with intrinsic gas", total);
+        assertLt(total, TX_GAS_CAP);
+    }
+
+    function test_vote_hostilePluginsFitTheTransactionGasCap() public {
+        uint256 total = _fullVoteGas(true);
+        emit log_named_uint("vote with 40 gas-burning plugins, with intrinsic gas", total);
+        assertLt(total, TX_GAS_CAP);
+    }
+
+    // Replaces a 20-pool vote with 20 other pools in the fixture's epoch, where the pools with the most expensive
+    // plugins have live timepoints, and returns the second vote's gas
+    function _fullVoteGas(bool hostile) internal returns (uint256) {
         _deploy();
-        _optIn();
-        uint256 epoch = _nextEpoch();
+        uint256 epoch = fx.readUint(".epoch");
+        vm.mockCall(VE, abi.encodeCall(IVotingEscrow.getPastVotes, (address(conduit), epoch)), abi.encode(1e27));
         address[] memory candidates = fx.readAddressArray(".gasPools");
         address[] memory cores = fx.readAddressArray(".gasCores");
         address[] memory tails = fx.readAddressArray(".gasTails");
         uint256 n = conduit.MAX_POOLS();
         for (uint256 i; i < candidates.length; ++i) {
             address fees = _feeBribe(candidates[i]);
-            _credit(fees, cores[i], _amountWorth(cores[i], i < n ? 10e18 : 20e18), epoch);
+            _credit(fees, cores[i], _amountWorth(cores[i], 10e18), epoch);
             _credit(fees, tails[i], 1e18, epoch);
         }
         address[] memory current = new address[](n);
@@ -466,28 +487,35 @@ contract ForkTest is Test {
             proposal[i] = candidates[n + i];
             weights[i] = 1;
             _notify(_externalBribe(current[i]), USDC, 10e6);
-            _notify(_externalBribe(proposal[i]), USDC, 20e6);
+            _notify(_externalBribe(proposal[i]), USDC, 1000e6);
         }
         vm.prank(stranger);
         conduit.vote(current, weights);
         assertEq(IVoter(VOTER).poolVoteLength(address(conduit)), n);
 
         _next();
-        for (uint256 i; i < candidates.length; ++i) {
-            vm.expectCall(
-                IAlgebraPool(candidates[i]).plugin(), abi.encodeWithSelector(IVolatilityOracle.getTimepoints.selector)
-            );
+        if (hostile) {
+            address burner = address(new GasBurner());
+            for (uint256 i; i < candidates.length; ++i) {
+                vm.prank(ALGEBRA_OWNER);
+                IAlgebraPoolExtra(candidates[i]).setPlugin(burner);
+            }
+            vm.expectCall(burner, abi.encodeWithSelector(IVolatilityOracle.getTimepoints.selector), uint64(2 * n));
+        } else {
+            for (uint256 i; i < candidates.length; ++i) {
+                vm.expectCall(
+                    IAlgebraPool(candidates[i]).plugin(),
+                    abi.encodeWithSelector(IVolatilityOracle.getTimepoints.selector)
+                );
+            }
         }
         vm.prank(stranger);
         conduit.vote(proposal, weights);
         Vm.Gas memory g = vm.lastFrameGas();
-        uint256 used = g.gasLimit - g.gasRemaining;
         uint256 calldataGas = 16 * abi.encodeCall(ImmutableVeTokenConduit.vote, (proposal, weights)).length;
-        emit log_named_uint("worst-case vote, execution gas", used);
-        emit log_named_uint("worst-case vote, with intrinsic gas", used + 21_000 + calldataGas);
-        assertLt(used + 21_000 + calldataGas, 14_000_000);
         assertEq(IVoter(VOTER).poolVote(address(conduit), 0), proposal[0]);
         assertEq(IVoter(VOTER).votes(address(conduit), current[0]), 0);
+        return g.gasLimit - g.gasRemaining + 21_000 + calldataGas;
     }
 
     function test_vote_killedGaugeInForceStillCounts() public {

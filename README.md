@@ -8,7 +8,7 @@ owner and sends a 1% fee to a fixed treasury.
 The contract has no owner, no settings and no upgrade path. All of it is in
 [`src/ImmutableVeTokenConduit.sol`](src/ImmutableVeTokenConduit.sol). This is version 2, which also counts the fees a
 pool earns in tokens without a Chainlink feed. It will be deployed on Base at
-`0x92E385C9740e1fDe5079e4d4c52Dd05A4889De60`. Version 1 is deployed at
+`0x094856Be40876f2caFAff54FC56f5baA277ed42E`. Version 1 is deployed at
 [`0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B`](https://basescan.org/address/0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B#code)
 and keeps working as it is.
 
@@ -66,7 +66,7 @@ It prices the tail token at the pool's average tick over the 30 minutes (`TWAP_W
 token's Chainlink price. It counts the tail token's fees up to the value of the fee bribe's whitelisted tokens, so a
 pool's fee bribe counts at most twice its whitelisted fees.
 
-The tail token counts as zero when the plugin's answer is missing, takes more than 300,000 gas, or isn't two
+The tail token counts as zero when the plugin's answer is missing, takes more than 130,000 gas, or isn't two
 cumulative ticks, and when the average tick is within 500 ticks of either end of Algebra's range (±887,272), where no
 real price is. Paid bribes count whitelisted tokens only.
 
@@ -87,7 +87,7 @@ the veNFT across owners, and each event names the owner at the time.
 
 ## For veNFT holders
 
-To opt in, call `setConduitApproval(0x92E385C9740e1fDe5079e4d4c52Dd05A4889De60, tokenId, true)` on the Hydrex
+To opt in, call `setConduitApproval(0x094856Be40876f2caFAff54FC56f5baA277ed42E, tokenId, true)` on the Hydrex
 VotingEscrow. This delegates your veNFT's votes to the conduit from the next epoch and lets the conduit claim your
 rewards. Call it with `false` to opt out. Transferring the veNFT clears the claim approval, so a new owner has to opt
 in again.
@@ -111,8 +111,9 @@ conduit first.
 `score`, `currentScore` and `poolValue` use exactly the numbers `vote` uses. Like `vote`, they revert with
 `EpochStale` until someone calls `update_period()` on the Hydrex minter at the start of an epoch, with
 `NoVotingPower` if the conduit had no delegated votes when the epoch started, and with `SequencerDown` while the
-sequencer is down or in the hour after it comes back. The Voter accepts one vote per block, and a vote costs up to
-about 12.1M gas.
+sequencer is down or in the hour after it comes back. The Voter accepts one vote per block. Replacing a vote of 20
+pools with 20 others costs about 12.2M gas on the pools whose plugins cost the most to read, and at most about 15.2M
+whatever the plugins do, within Base's limit of 16,777,216 gas per transaction.
 
 ### Claiming rewards
 
@@ -145,7 +146,8 @@ address: it makes the whole claim revert.
   price recovers and someone proposes again.
 - Algebra's factory owner and pool administrators can replace a pool's plugin or change its configuration, and a
   plugin factory can upgrade the upgradeable plugins. A broken or hostile plugin can make a pool's tail count up to
-  its cap, or not at all, but can't block votes.
+  its cap, or not at all. It gets at most 130,000 gas per call, so it can't make a vote too expensive for a Base
+  transaction.
 - Scores use other voters' current votes. If they change theirs later, the vote in force may no longer be the best,
   and anyone can propose a better one. A vote accepted in an epoch's last block can't be replaced.
 - A token that charges a fee on transfers is charged twice on its way through the conduit.
@@ -162,7 +164,7 @@ Version 2 isn't deployed yet. `script/Deploy.s.sol` deploys it at the address be
 | | |
 |---|---|
 | Network | Base |
-| Address | `0x92E385C9740e1fDe5079e4d4c52Dd05A4889De60` |
+| Address | `0x094856Be40876f2caFAff54FC56f5baA277ed42E` |
 | Voter | `0xc69E3eF39E3fFBcE2A1c570f8d3ADF76909ef17b` |
 | VotingEscrow | `0x25B2ED7149fb8A05f6eF9407d9c8F878f59cd1e1` |
 | Sequencer uptime feed | `0xBCF85224fc0756B9Fa45aA7892530B47e10b6433` |
@@ -191,7 +193,7 @@ Deployment steps:
 ```
 forge script script/Deploy.s.sol --rpc-url $BASE_RPC_URL --broadcast --ledger
 ARGS=$(jq -j .deployment.constructorArgs verification/bytecode-hashes.json)
-forge verify-contract 0x92E385C9740e1fDe5079e4d4c52Dd05A4889De60 src/ImmutableVeTokenConduit.sol:ImmutableVeTokenConduit --chain base \
+forge verify-contract 0x094856Be40876f2caFAff54FC56f5baA277ed42E src/ImmutableVeTokenConduit.sol:ImmutableVeTokenConduit --chain base \
   --constructor-args $ARGS --license-type MIT --watch
 ```
 
@@ -201,7 +203,7 @@ To check that the deployed contract is this repository's code, compare its code 
 `verification/bytecode-hashes.json`, which `script/check-verification.sh` checks against a build of this repository:
 
 ```
-cast keccak $(cast code 0x92E385C9740e1fDe5079e4d4c52Dd05A4889De60 --rpc-url $BASE_RPC_URL)
+cast keccak $(cast code 0x094856Be40876f2caFAff54FC56f5baA277ed42E --rpc-url $BASE_RPC_URL)
 jq -j .deployment.runtimeKeccak verification/bytecode-hashes.json
 ```
 

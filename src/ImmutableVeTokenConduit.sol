@@ -51,7 +51,7 @@ contract ImmutableVeTokenConduit {
     uint256 private constant MAX_PRICED_TOKENS = 4;
     uint8 private constant CLAIM_REDIRECT_APPROVAL = 3;
     uint8 private constant VOTING_DELEGATE = 5;
-    uint256 private constant TWAP_GAS = 300_000;
+    uint256 private constant TWAP_GAS = 130_000;
     // within Algebra's largest tick spacing (500) of either end of its tick range (±887,272)
     int256 private constant TICK_EDGE = 886_772;
     uint256 private constant NONE = type(uint256).max;
