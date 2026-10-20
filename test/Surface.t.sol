@@ -8,6 +8,12 @@ import {MockFeed} from "./mocks/MockFeed.sol";
 import {MockToken} from "./mocks/MockToken.sol";
 import {ConduitTestBase} from "./utils/ConduitTestBase.sol";
 
+contract DirtyFactory {
+    function poolByPair(address, address) external pure returns (uint256) {
+        return type(uint256).max;
+    }
+}
+
 contract SurfaceTest is ConduitTestBase {
     string internal constant ARTIFACT = "out/ImmutableVeTokenConduit.sol/ImmutableVeTokenConduit.json";
 
@@ -121,6 +127,14 @@ contract SurfaceTest is ConduitTestBase {
             a[i] = address(0);
             vm.expectRevert(ImmutableVeTokenConduit.ZeroAddress.selector);
             new ImmutableVeTokenConduit(a[0], a[1], a[2], a[3], _priced());
+        }
+    }
+
+    function test_constructor_revertsOnBadFactory() public {
+        address[3] memory bad = [makeAddr("no code"), address(usdc), address(new DirtyFactory())];
+        for (uint256 i; i < bad.length; ++i) {
+            vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.BadFactory.selector, bad[i]));
+            new ImmutableVeTokenConduit(address(voter), address(ve), address(sequencer), bad[i], _priced());
         }
     }
 

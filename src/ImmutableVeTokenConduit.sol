@@ -89,6 +89,7 @@ contract ImmutableVeTokenConduit {
     error Duplicate(address account);
     error NoRewardContracts();
     error BadFeed(address feed);
+    error BadFactory(address factory);
     error SequencerDown();
     error EpochStale();
     error NoVotingPower();
@@ -119,6 +120,9 @@ contract ImmutableVeTokenConduit {
             voter_ == address(0) || veToken_ == address(0) || sequencerFeed_ == address(0)
                 || algebraFactory_ == address(0)
         ) revert ZeroAddress();
+        (bool ok, bytes memory ret) =
+            algebraFactory_.staticcall(abi.encodeCall(IAlgebraFactory.poolByPair, (address(0), address(0))));
+        if (!ok || ret.length != 32 || abi.decode(ret, (uint256)) >> 160 != 0) revert BadFactory(algebraFactory_);
         voter = voter_;
         veToken = veToken_;
         sequencerFeed = sequencerFeed_;

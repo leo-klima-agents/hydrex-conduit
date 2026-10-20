@@ -11,6 +11,8 @@ import {Reference} from "./utils/Reference.sol";
 contract TailTest is ConduitTestBase {
     address internal constant LOW = address(0x100);
     address internal constant HIGH = address(type(uint160).max);
+    address internal constant LOW2 = address(0x200);
+    address internal constant HIGH2 = address(type(uint160).max - 1);
     int256 internal constant EDGE = 886_772;
     int256 internal constant DOUBLE = 6932;
 
@@ -167,6 +169,16 @@ contract TailTest is ConduitTestBase {
         assertEq(conduit.poolValue(pool), 200e18);
     }
 
+    function test_tail_returnBombIsIgnored() public {
+        (address pool, MockPlugin p) = _usdcTail(LOW, 100e6, 100e6);
+        p.setMode(MockPlugin.Mode.ReturnBomb);
+        (bool ok, bytes memory ret) =
+            address(p).staticcall{gas: 130_000}(abi.encodeCall(MockPlugin.getTimepoints, (new uint32[](2))));
+        assertTrue(ok);
+        assertEq(ret.length, 100_000);
+        assertEq(conduit.poolValue(pool), 100e18);
+    }
+
     function test_tail_gasBurningPluginDoesNotBlockVotes() public {
         (address pool, MockPlugin p) = _usdcTail(LOW, 100e6, 100e6);
         p.setMode(MockPlugin.Mode.BurnsGas);
@@ -232,6 +244,25 @@ contract TailTest is ConduitTestBase {
         uint256 value = conduit.poolValue(pool);
         assertLe(value, 2 * core);
         assertApproxEqAbs(value - core, expected, expected / 1e12 + 1e12);
+    }
+
+    function testFuzz_tail_boundedOverTheWholeTickRange(uint256 amount, int256 tick, uint256 coreAmount, bool low)
+        public
+    {
+        tick = bound(tick, -(EDGE - 1), EDGE - 1);
+        coreAmount = bound(coreAmount, 1, 1e36);
+        (address tail, address other) = low ? (LOW, LOW2) : (HIGH, HIGH2);
+        (address pool,) = _tailPool(address(usdc), tail, tick);
+        (address half,) = _tailPool(address(usdc), other, tick);
+        _fee(pool, address(usdc), coreAmount);
+        _fee(pool, tail, amount);
+        _fee(half, address(usdc), coreAmount);
+        _fee(half, other, amount / 2);
+        uint256 core = coreAmount * 1e12;
+        uint256 value = conduit.poolValue(pool);
+        assertGe(value, core);
+        assertLe(value, 2 * core);
+        assertLe(conduit.poolValue(half), value);
     }
 
     function test_vote_tailCountsInProposalsAndTheVoteInForce() public {

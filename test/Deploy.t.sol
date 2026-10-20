@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 
 import {Deploy} from "../script/Deploy.s.sol";
 import {ImmutableVeTokenConduit} from "../src/ImmutableVeTokenConduit.sol";
+import {MockAlgebraFactory} from "./mocks/MockAlgebra.sol";
 import {MockFeed} from "./mocks/MockFeed.sol";
 import {MockToken} from "./mocks/MockToken.sol";
 import {MockVotingEscrow} from "./mocks/MockVotingEscrow.sol";
@@ -18,6 +19,7 @@ contract DeployTest is Test {
         d = new Deploy();
         vm.etch(d.VOTER(), hex"00");
         vm.etch(d.VE_TOKEN(), address(new MockVotingEscrow()).code);
+        vm.etch(d.ALGEBRA_FACTORY(), address(new MockAlgebraFactory()).code);
         vm.etch(d.WETH(), address(new MockToken(18)).code);
         vm.etch(d.CBBTC(), address(new MockToken(8)).code);
         vm.etch(d.USDC(), address(new MockToken(6)).code);

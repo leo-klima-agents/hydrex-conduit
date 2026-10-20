@@ -465,7 +465,7 @@ contract ForkTest is Test {
     }
 
     // Replaces a 20-pool vote with 20 other pools in the fixture's epoch, where the pools with the most expensive
-    // plugins have live timepoints, and returns the second vote's gas
+    // plugins have live timepoints, within a Base transaction's gas limit, and returns the second vote's gas
     function _fullVoteGas(bool hostile) internal returns (uint256) {
         _deploy();
         uint256 epoch = fx.readUint(".epoch");
@@ -509,13 +509,13 @@ contract ForkTest is Test {
                 );
             }
         }
+        uint256 intrinsic = 21_000 + 16 * abi.encodeCall(ImmutableVeTokenConduit.vote, (proposal, weights)).length;
         vm.prank(stranger);
-        conduit.vote(proposal, weights);
+        conduit.vote{gas: TX_GAS_CAP - intrinsic}(proposal, weights);
         Vm.Gas memory g = vm.lastFrameGas();
-        uint256 calldataGas = 16 * abi.encodeCall(ImmutableVeTokenConduit.vote, (proposal, weights)).length;
         assertEq(IVoter(VOTER).poolVote(address(conduit), 0), proposal[0]);
         assertEq(IVoter(VOTER).votes(address(conduit), current[0]), 0);
-        return g.gasLimit - g.gasRemaining + 21_000 + calldataGas;
+        return g.gasLimit - g.gasRemaining + intrinsic;
     }
 
     function test_vote_killedGaugeInForceStillCounts() public {

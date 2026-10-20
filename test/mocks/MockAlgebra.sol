@@ -75,7 +75,7 @@ contract MockPlugin {
                 mstore(add(ret, 0xa0), shl(56, 1))
             }
         }
-        if (m == Mode.ReturnBomb) ret = new bytes(300_000);
+        if (m == Mode.ReturnBomb) ret = new bytes(100_000);
         assembly ("memory-safe") {
             return(add(ret, 0x20), mload(ret))
         }
