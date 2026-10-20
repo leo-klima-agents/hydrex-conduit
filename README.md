@@ -6,8 +6,11 @@ least $1 more in bribes. Anyone can also claim a delegator's rewards through it:
 owner and sends a 1% fee to a fixed treasury.
 
 The contract has no owner, no settings and no upgrade path. All of it is in
-[`src/ImmutableVeTokenConduit.sol`](src/ImmutableVeTokenConduit.sol), deployed on Base at
-[`0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B`](https://basescan.org/address/0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B#code).
+[`src/ImmutableVeTokenConduit.sol`](src/ImmutableVeTokenConduit.sol). This is version 2, which also counts the fees a
+pool earns in tokens without a Chainlink feed. It will be deployed on Base at
+`0x92E385C9740e1fDe5079e4d4c52Dd05A4889De60`. Version 1 is deployed at
+[`0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B`](https://basescan.org/address/0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B#code)
+and keeps working as it is.
 
 ## How it works
 
@@ -23,8 +26,9 @@ A vote's score is the bribe income the delegators can expect this epoch, in USD 
 
 summed over the vote's pools, where:
 
-- **B** is the value of the pool's external and internal bribes this epoch, counting only the whitelisted tokens
-  below at their Chainlink prices;
+- **B** is the value of the pool's paid (external) and fee (internal) bribes this epoch: the whitelisted tokens below
+  at their Chainlink prices, plus, in the fee bribe, the pool's other token up to the value of those whitelisted
+  tokens (see [Long-tail fees](#long-tail-fees));
 - **V** is the other voters' votes on the pool;
 - **x** is the conduit's votes on the pool, split from its voting power at the start of the epoch the same way the
   Voter splits it.
@@ -48,6 +52,24 @@ back.
 
 A token counts as zero while its price is older than the maximum age, not positive, or unavailable.
 
+### Long-tail fees
+
+A pool's fee bribe holds the trading fees of its two tokens, and many pools pair a whitelisted token (the core token)
+with one that has no Chainlink feed (the tail token). The conduit counts the tail token's fees when:
+
+- the fee bribe's first two reward tokens are exactly one whitelisted token and one other token;
+- their Algebra base pool, `poolByPair` on the Algebra factory, is the gauge's own pool;
+- the fee bribe holds some of the whitelisted tokens, and the core token's price is fresh.
+
+It prices the tail token at the pool's average tick over the 30 minutes (`TWAP_WINDOW`) that end 2 seconds
+(`TWAP_LAG`, one Base block) before the vote's block, read from the pool's plugin, and converts it with the core
+token's Chainlink price. It counts the tail token's fees up to the value of the fee bribe's whitelisted tokens, so a
+pool's fee bribe counts at most twice its whitelisted fees.
+
+The tail token counts as zero when the plugin's answer is missing, takes more than 300,000 gas, or isn't two
+cumulative ticks, and when the average tick is within 500 ticks of either end of Algebra's range (±887,272), where no
+real price is. Paid bribes count whitelisted tokens only.
+
 ### Claiming
 
 `claim(tokenId, feeAddresses, bribeAddresses, tokens)` claims `tokens` for an opted-in veNFT from the given fee and
@@ -65,7 +87,7 @@ the veNFT across owners, and each event names the owner at the time.
 
 ## For veNFT holders
 
-To opt in, call `setConduitApproval(0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B, tokenId, true)` on the Hydrex
+To opt in, call `setConduitApproval(0x92E385C9740e1fDe5079e4d4c52Dd05A4889De60, tokenId, true)` on the Hydrex
 VotingEscrow. This delegates your veNFT's votes to the conduit from the next epoch and lets the conduit claim your
 rewards. Call it with `false` to opt out. Transferring the veNFT clears the claim approval, so a new owner has to opt
 in again.
@@ -90,7 +112,7 @@ conduit first.
 `EpochStale` until someone calls `update_period()` on the Hydrex minter at the start of an epoch, with
 `NoVotingPower` if the conduit had no delegated votes when the epoch started, and with `SequencerDown` while the
 sequencer is down or in the hour after it comes back. The Voter accepts one vote per block, and a vote costs up to
-about 9.7M gas.
+about 12.1M gas.
 
 ### Claiming rewards
 
@@ -113,6 +135,17 @@ address: it makes the whole claim revert.
 - Chainlink prices only affect votes. If a feed goes stale, its token counts as zero in both the vote in force and
   the proposal, so a worse proposal can win while it lasts; for WETH and cbBTC, that takes 25 minutes without an
   update. If the sequencer feed stops answering, votes stop, but claims still work.
+- Tail prices come from the pools themselves, and anyone can move a pool's price by trading. A price that ends a block
+  before the vote can't be moved within the vote's transaction, but someone who holds a pool's price for 30 minutes,
+  which is cheap in a thin pool and free for whoever controls a token's supply, can make its tail count up to the
+  cap. The cap bounds the harm: what delegators receive from a pool is always at least half of what the conduit
+  counts for it, and with honest prices the conduit never counts more than they receive. Depositing whitelisted
+  tokens in a fee bribe counts them once, unless real tail fees are there to match them.
+- Pushing a tail token's price down removes it from the vote in force, which can let a worse proposal win until the
+  price recovers and someone proposes again.
+- Algebra's factory owner and pool administrators can replace a pool's plugin or change its configuration, and a
+  plugin factory can upgrade the upgradeable plugins. A broken or hostile plugin can make a pool's tail count up to
+  its cap, or not at all, but can't block votes.
 - Scores use other voters' current votes. If they change theirs later, the vote in force may no longer be the best,
   and anyone can propose a better one. A vote accepted in an epoch's last block can't be replaced.
 - A token that charges a fee on transfers is charged twice on its way through the conduit.
@@ -124,22 +157,27 @@ address: it makes the whole claim revert.
 
 ## Deployment
 
-Deployed on 2026-10-19 by transaction
-[`0x3fb9…4c00`](https://basescan.org/tx/0x3fb98ef128fcda6d9a59ac2d6b293b4ae2ccdb6e1c634d53651a0761867c4d00).
-The source is verified on
-[BaseScan](https://basescan.org/address/0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B#code) as an exact match.
+Version 2 isn't deployed yet. `script/Deploy.s.sol` deploys it at the address below.
 
 | | |
 |---|---|
 | Network | Base |
-| Address | `0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B` |
+| Address | `0x92E385C9740e1fDe5079e4d4c52Dd05A4889De60` |
 | Voter | `0xc69E3eF39E3fFBcE2A1c570f8d3ADF76909ef17b` |
 | VotingEscrow | `0x25B2ED7149fb8A05f6eF9407d9c8F878f59cd1e1` |
 | Sequencer uptime feed | `0xBCF85224fc0756B9Fa45aA7892530B47e10b6433` |
+| Algebra factory | `0x36077D39cdC65E1e3FB65810430E5b2c4D5fA29E` |
 | Priced tokens | the whitelist above |
 | Treasury | `0x450c72de8c0079B49AcedF294a13011bd09D125B`, a 2-of-3 Safe, fixed in the source |
 | Fee | 1% (`FEE_BPS = 100`), fixed in the source |
-| Method | CREATE2 through `0x4e59b44847b379578588920cA78FbF26c0B4956C`, salt `keccak256("metadex.cafe/ImmutableVeTokenConduit/v1")` |
+| Method | CREATE2 through `0x4e59b44847b379578588920cA78FbF26c0B4956C`, salt `keccak256("metadex.cafe/ImmutableVeTokenConduit/v2")` |
+
+Version 1 was deployed on 2026-10-19 at
+[`0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B`](https://basescan.org/address/0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B#code)
+by transaction [`0x3fb9…4c00`](https://basescan.org/tx/0x3fb98ef128fcda6d9a59ac2d6b293b4ae2ccdb6e1c634d53651a0761867c4d00),
+with salt `keccak256("metadex.cafe/ImmutableVeTokenConduit/v1")`, and is verified on BaseScan as an exact match. It
+counts only the whitelisted tokens. A veNFT has one claim-redirect address and one delegate, so opting in to version
+2 takes it out of version 1. `broadcast/` holds version 1's deployment until version 2 is deployed.
 
 Deployment steps:
 
@@ -153,7 +191,7 @@ Deployment steps:
 ```
 forge script script/Deploy.s.sol --rpc-url $BASE_RPC_URL --broadcast --ledger
 ARGS=$(jq -j .deployment.constructorArgs verification/bytecode-hashes.json)
-forge verify-contract 0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B src/ImmutableVeTokenConduit.sol:ImmutableVeTokenConduit --chain base \
+forge verify-contract 0x92E385C9740e1fDe5079e4d4c52Dd05A4889De60 src/ImmutableVeTokenConduit.sol:ImmutableVeTokenConduit --chain base \
   --constructor-args $ARGS --license-type MIT --watch
 ```
 
@@ -163,7 +201,7 @@ To check that the deployed contract is this repository's code, compare its code 
 `verification/bytecode-hashes.json`, which `script/check-verification.sh` checks against a build of this repository:
 
 ```
-cast keccak $(cast code 0x8B79159681aEbeC096D06F3d996fCd2f72e54f8B --rpc-url $BASE_RPC_URL)
+cast keccak $(cast code 0x92E385C9740e1fDe5079e4d4c52Dd05A4889De60 --rpc-url $BASE_RPC_URL)
 jq -j .deployment.runtimeKeccak verification/bytecode-hashes.json
 ```
 

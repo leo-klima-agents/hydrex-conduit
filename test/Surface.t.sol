@@ -43,12 +43,15 @@ contract SurfaceTest is ConduitTestBase {
         assertEq(conduit.MAX_POOLS(), 20);
         assertEq(conduit.MIN_GAIN(), 1e18);
         assertEq(conduit.SEQUENCER_GRACE(), 3600);
+        assertEq(conduit.TWAP_WINDOW(), 1800);
+        assertEq(conduit.TWAP_LAG(), 2);
     }
 
     function test_constructor_storesConfiguration() public view {
         assertEq(conduit.voter(), address(voter));
         assertEq(conduit.veToken(), address(ve));
         assertEq(conduit.sequencerFeed(), address(sequencer));
+        assertEq(conduit.algebraFactory(), address(algebra));
         (address token,,,,) = conduit.pricedTokens(3);
         assertEq(token, address(eurc));
     }
@@ -112,12 +115,12 @@ contract SurfaceTest is ConduitTestBase {
     }
 
     function test_constructor_revertsOnZeroAddresses() public {
-        address[3] memory core = [address(voter), address(ve), address(sequencer)];
-        for (uint256 i; i < 3; ++i) {
-            address[3] memory a = core;
+        address[4] memory core = [address(voter), address(ve), address(sequencer), address(algebra)];
+        for (uint256 i; i < 4; ++i) {
+            address[4] memory a = core;
             a[i] = address(0);
             vm.expectRevert(ImmutableVeTokenConduit.ZeroAddress.selector);
-            new ImmutableVeTokenConduit(a[0], a[1], a[2], _priced());
+            new ImmutableVeTokenConduit(a[0], a[1], a[2], a[3], _priced());
         }
     }
 
@@ -180,10 +183,12 @@ contract SurfaceTest is ConduitTestBase {
     }
 
     function test_constructor_revertsIfAlreadyRegistered() public {
-        bytes memory args = abi.encode(address(voter), address(ve), address(sequencer), _priced());
+        bytes memory args = abi.encode(address(voter), address(ve), address(sequencer), address(algebra), _priced());
         bytes32 initHash = keccak256(bytes.concat(type(ImmutableVeTokenConduit).creationCode, args));
         ve.squat(vm.computeCreate2Address(bytes32(0), initHash, address(this)));
         vm.expectRevert(bytes("Conduit already configured"));
-        new ImmutableVeTokenConduit{salt: bytes32(0)}(address(voter), address(ve), address(sequencer), _priced());
+        new ImmutableVeTokenConduit{salt: bytes32(0)}(
+            address(voter), address(ve), address(sequencer), address(algebra), _priced()
+        );
     }
 }
