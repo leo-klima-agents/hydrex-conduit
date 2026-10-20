@@ -4,6 +4,7 @@ pragma solidity 0.8.37;
 import {Test} from "forge-std/Test.sol";
 
 import {ImmutableVeTokenConduit} from "../../src/ImmutableVeTokenConduit.sol";
+import {MockAlgebraFactory, MockAlgebraPool, MockPlugin} from "../mocks/MockAlgebra.sol";
 import {MockBribe} from "../mocks/MockBribe.sol";
 import {MockFeed} from "../mocks/MockFeed.sol";
 import {MockToken} from "../mocks/MockToken.sol";
@@ -38,6 +39,7 @@ abstract contract ConduitTestBase is Test {
     MockFeed internal usdcFeed;
     MockFeed internal eurcFeed;
     MockFeed internal sequencer;
+    MockAlgebraFactory internal algebra;
     ImmutableVeTokenConduit internal conduit;
 
     uint256 internal poolCount;
@@ -59,6 +61,7 @@ abstract contract ConduitTestBase is Test {
         ve = new MockVotingEscrow();
         voter = new MockVoter(ve, bribeOwner);
         voter.setEpoch(EPOCH);
+        algebra = new MockAlgebraFactory();
         conduit = _deploy();
         treasury = conduit.TREASURY();
         ve.setPastVotes(address(conduit), EPOCH, POWER);
@@ -81,7 +84,7 @@ abstract contract ConduitTestBase is Test {
     }
 
     function _deployWith(ImmutableVeTokenConduit.PricedToken[] memory p) internal returns (ImmutableVeTokenConduit) {
-        return new ImmutableVeTokenConduit(address(voter), address(ve), address(sequencer), p);
+        return new ImmutableVeTokenConduit(address(voter), address(ve), address(sequencer), address(algebra), p);
     }
 
     function _pool(uint256 usd, uint256 others) internal returns (address pool) {
@@ -92,8 +95,30 @@ abstract contract ConduitTestBase is Test {
     }
 
     function _reward(address pool, address token, uint256 amount) internal {
-        MockBribe b = MockBribe(voter.external_bribes(voter.gauges(pool)));
+        _credit(MockBribe(voter.external_bribes(voter.gauges(pool))), token, amount);
+    }
+
+    function _fee(address pool, address token, uint256 amount) internal {
+        _credit(_fees(pool), token, amount);
+    }
+
+    function _credit(MockBribe b, address token, uint256 amount) internal {
         b.setRewards(token, voter._epochTimestamp(), b.rewardsPerEpoch(token, voter._epochTimestamp()) + amount);
+    }
+
+    function _fees(address pool) internal view returns (MockBribe) {
+        return MockBribe(voter.internal_bribes(voter.gauges(pool)));
+    }
+
+    function _tailPool(address core, address tail, int256 tailTick) internal returns (address pool, MockPlugin plugin) {
+        plugin = new MockPlugin();
+        plugin.setTick(tail < core ? tailTick : -tailTick);
+        MockAlgebraPool p = new MockAlgebraPool(core, tail, address(plugin));
+        pool = address(p);
+        voter.addPool(pool);
+        _fees(pool).addRewardToken(p.token0());
+        _fees(pool).addRewardToken(p.token1());
+        algebra.setPool(core, tail, pool);
     }
 
     function _one(address pool) internal pure returns (address[] memory pools, uint256[] memory weights) {

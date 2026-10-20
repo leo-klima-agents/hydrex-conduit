@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 
 import {Deploy} from "../script/Deploy.s.sol";
 import {ImmutableVeTokenConduit} from "../src/ImmutableVeTokenConduit.sol";
+import {MockAlgebraFactory} from "./mocks/MockAlgebra.sol";
 import {MockFeed} from "./mocks/MockFeed.sol";
 import {MockToken} from "./mocks/MockToken.sol";
 import {MockVotingEscrow} from "./mocks/MockVotingEscrow.sol";
@@ -18,6 +19,7 @@ contract DeployTest is Test {
         d = new Deploy();
         vm.etch(d.VOTER(), hex"00");
         vm.etch(d.VE_TOKEN(), address(new MockVotingEscrow()).code);
+        vm.etch(d.ALGEBRA_FACTORY(), address(new MockAlgebraFactory()).code);
         vm.etch(d.WETH(), address(new MockToken(18)).code);
         vm.etch(d.CBBTC(), address(new MockToken(8)).code);
         vm.etch(d.USDC(), address(new MockToken(6)).code);
@@ -40,7 +42,8 @@ contract DeployTest is Test {
         assertEq(d.VE_TOKEN(), 0x25B2ED7149fb8A05f6eF9407d9c8F878f59cd1e1);
         assertEq(d.USDC(), 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913);
         assertEq(d.SEQUENCER_FEED(), 0xBCF85224fc0756B9Fa45aA7892530B47e10b6433);
-        assertEq(d.SALT(), keccak256("metadex.cafe/ImmutableVeTokenConduit/v1"));
+        assertEq(d.ALGEBRA_FACTORY(), 0x36077D39cdC65E1e3FB65810430E5b2c4D5fA29E);
+        assertEq(d.SALT(), keccak256("metadex.cafe/ImmutableVeTokenConduit/v2"));
 
         ImmutableVeTokenConduit.PricedToken[] memory p = d.pricedTokens();
         assertEq(p.length, 4);
@@ -82,11 +85,13 @@ contract DeployTest is Test {
             vm.parseJsonBytes32(json, ".creationCodeKeccak"), keccak256(type(ImmutableVeTokenConduit).creationCode)
         );
 
-        ImmutableVeTokenConduit local =
-            new ImmutableVeTokenConduit(d.VOTER(), d.VE_TOKEN(), d.SEQUENCER_FEED(), d.pricedTokens());
+        ImmutableVeTokenConduit local = new ImmutableVeTokenConduit(
+            d.VOTER(), d.VE_TOKEN(), d.SEQUENCER_FEED(), d.ALGEBRA_FACTORY(), d.pricedTokens()
+        );
         assertEq(vm.parseJsonAddress(json, ".deployment.voter"), d.VOTER());
         assertEq(vm.parseJsonAddress(json, ".deployment.veToken"), d.VE_TOKEN());
         assertEq(vm.parseJsonAddress(json, ".deployment.sequencerFeed"), d.SEQUENCER_FEED());
+        assertEq(vm.parseJsonAddress(json, ".deployment.algebraFactory"), d.ALGEBRA_FACTORY());
         ImmutableVeTokenConduit.PricedToken[] memory p = d.pricedTokens();
         address[] memory tokens = vm.parseJsonAddressArray(json, ".deployment.pricedTokens");
         address[] memory feeds = vm.parseJsonAddressArray(json, ".deployment.feeds");
@@ -112,6 +117,7 @@ contract DeployTest is Test {
         assertEq(c.voter(), d.VOTER());
         assertEq(c.veToken(), d.VE_TOKEN());
         assertEq(c.sequencerFeed(), d.SEQUENCER_FEED());
+        assertEq(c.algebraFactory(), d.ALGEBRA_FACTORY());
         assertTrue(MockVotingEscrow(d.VE_TOKEN()).configActive(predicted));
     }
 

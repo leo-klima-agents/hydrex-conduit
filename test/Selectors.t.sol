@@ -5,8 +5,11 @@ import {Test} from "forge-std/Test.sol";
 
 import {ImmutableVeTokenConduit} from "../src/ImmutableVeTokenConduit.sol";
 import {IAggregatorV3} from "../src/interfaces/IAggregatorV3.sol";
+import {IAlgebraFactory} from "../src/interfaces/IAlgebraFactory.sol";
+import {IAlgebraPool} from "../src/interfaces/IAlgebraPool.sol";
 import {IBribe} from "../src/interfaces/IBribe.sol";
 import {IERC20} from "../src/interfaces/IERC20.sol";
+import {IVolatilityOracle} from "../src/interfaces/IVolatilityOracle.sol";
 import {IVoter} from "../src/interfaces/IVoter.sol";
 import {IVotingEscrow} from "../src/interfaces/IVotingEscrow.sol";
 
@@ -18,7 +21,7 @@ contract SelectorsTest is Test {
     }
 
     function _pins() internal pure returns (Pin[] memory p) {
-        p = new Pin[](22);
+        p = new Pin[](26);
         p[0] = Pin(IVoter.vote.selector, 0x6f816a20, "vote(address[],uint256[])");
         p[1] = Pin(IVoter._epochTimestamp.selector, 0xf8803bb6, "_epochTimestamp()");
         p[2] = Pin(IVoter.weights.selector, 0xa7cac846, "weights(address)");
@@ -51,6 +54,10 @@ contract SelectorsTest is Test {
         p[19] = Pin(IERC20.decimals.selector, 0x313ce567, "decimals()");
         p[20] = Pin(IAggregatorV3.latestRoundData.selector, 0xfeaf968c, "latestRoundData()");
         p[21] = Pin(IBribe.totalSupplyAt.selector, 0x981b24d0, "totalSupplyAt(uint256)");
+        p[22] = Pin(IBribe.rewardTokens.selector, 0x7bb7bed1, "rewardTokens(uint256)");
+        p[23] = Pin(IAlgebraFactory.poolByPair.selector, 0xd9a641e1, "poolByPair(address,address)");
+        p[24] = Pin(IAlgebraPool.plugin.selector, 0xef01df4f, "plugin()");
+        p[25] = Pin(IVolatilityOracle.getTimepoints.selector, 0x9d3a5241, "getTimepoints(uint32[])");
     }
 
     function test_selectors_matchLiteralsAndSignatures() public pure {

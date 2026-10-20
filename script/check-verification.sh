@@ -27,9 +27,9 @@ expect .solc "$(jq -j '.metadata.compiler.version' "$ARTIFACT")"
 expect .salt "$(cast keccak "$(jq -j .saltPreimage "$HASHES")")"
 
 priced=$(jq -j '.deployment | [.pricedTokens, .feeds, .maxAges] | transpose | map("(" + (map(tostring) | join(",")) + ")") | join(",")' "$HASHES")
-args=$(cast abi-encode 'constructor(address,address,address,(address,address,uint256)[])' \
+args=$(cast abi-encode 'constructor(address,address,address,address,(address,address,uint256)[])' \
   "$(jq -j .deployment.voter "$HASHES")" "$(jq -j .deployment.veToken "$HASHES")" \
-  "$(jq -j .deployment.sequencerFeed "$HASHES")" "[$priced]")
+  "$(jq -j .deployment.sequencerFeed "$HASHES")" "$(jq -j .deployment.algebraFactory "$HASHES")" "[$priced]")
 expect .deployment.constructorArgs "$args"
 expect .deployment.address "$(cast create2 --deployer "$(jq -j .create2Deployer "$HASHES")" --salt "$(jq -j .salt "$HASHES")" --init-code "${creation}${args#0x}" | grep -oE '0x[0-9a-fA-F]{40}' | head -n1)"
 

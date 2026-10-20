@@ -10,6 +10,7 @@ contract Deploy is Script {
     address public constant VOTER = 0xc69E3eF39E3fFBcE2A1c570f8d3ADF76909ef17b;
     address public constant VE_TOKEN = 0x25B2ED7149fb8A05f6eF9407d9c8F878f59cd1e1;
     address public constant SEQUENCER_FEED = 0xBCF85224fc0756B9Fa45aA7892530B47e10b6433;
+    address public constant ALGEBRA_FACTORY = 0x36077D39cdC65E1e3FB65810430E5b2c4D5fA29E;
 
     address public constant WETH = 0x4200000000000000000000000000000000000006;
     address public constant ETH_USD = 0x50015f8b17fb2C290Dde41fDc246ed0dcEE93a8b;
@@ -22,7 +23,7 @@ contract Deploy is Script {
     uint256 public constant FAST_MAX_AGE = 1500;
     uint256 public constant SLOW_MAX_AGE = 108_000;
 
-    string public constant SALT_PREIMAGE = "metadex.cafe/ImmutableVeTokenConduit/v1";
+    string public constant SALT_PREIMAGE = "metadex.cafe/ImmutableVeTokenConduit/v2";
     bytes32 public constant SALT = keccak256(bytes(SALT_PREIMAGE));
 
     function pricedTokens() public pure returns (ImmutableVeTokenConduit.PricedToken[] memory p) {
@@ -34,7 +35,7 @@ contract Deploy is Script {
     }
 
     function constructorArgs() public pure returns (bytes memory) {
-        return abi.encode(VOTER, VE_TOKEN, SEQUENCER_FEED, pricedTokens());
+        return abi.encode(VOTER, VE_TOKEN, SEQUENCER_FEED, ALGEBRA_FACTORY, pricedTokens());
     }
 
     function initCode() public pure returns (bytes memory) {

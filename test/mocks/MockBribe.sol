@@ -19,10 +19,15 @@ contract MockBribe {
     mapping(uint256 => mapping(address => uint256)) public earned;
     mapping(uint256 => uint256) public totalSupplyAt;
     mapping(address => mapping(uint256 => uint256)) public balanceOfOwnerAt;
+    address[] public rewardTokens;
 
     constructor(address voter_, address owner_) {
         voter = voter_;
         owner = owner_;
+    }
+
+    function addRewardToken(address token) external {
+        rewardTokens.push(token);
     }
 
     function rewardData(address token, uint256 epoch) external view returns (uint256, uint256, uint256) {

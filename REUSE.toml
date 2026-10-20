@@ -13,6 +13,12 @@ SPDX-FileCopyrightText = "2026 Hydrex"
 SPDX-License-Identifier = "MIT"
 
 [[annotations]]
+path = "test/upstream/algebra/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Algebra"
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+[[annotations]]
 path = ["broadcast/**", "verification/**"]
 precedence = "override"
 SPDX-FileCopyrightText = "2026 Léo de Souza"

@@ -34,4 +34,26 @@ library Reference {
     function votesFor(uint256 weight, uint256 power, uint256 total) internal pure returns (uint256) {
         return weight * power / total;
     }
+
+    function ratio(uint256 x) internal pure returns (uint256 r) {
+        uint256 q = 1 << 128;
+        uint256 b = q * 10_000 / 10_001;
+        r = q;
+        for (; x != 0; x >>= 1) {
+            if (x & 1 == 1) r = mulDiv(r, b, q);
+            b = mulDiv(b, b, q);
+        }
+    }
+
+    function tailValue(int256 tick, uint256 amount, uint256 perUnit, uint256 div, uint256 cap)
+        internal
+        pure
+        returns (uint256)
+    {
+        uint256 r = ratio(tick < 0 ? uint256(-tick) : uint256(tick));
+        uint256 core = tick <= 0 ? mulDiv(amount, r, 1 << 128) : mulDiv(amount, 1 << 128, r);
+        if (core > type(uint256).max / perUnit) return cap;
+        uint256 usd = core * perUnit / div;
+        return usd < cap ? usd : cap;
+    }
 }

@@ -6,10 +6,14 @@ import {Test, Vm} from "forge-std/Test.sol";
 
 import {Deploy} from "../script/Deploy.s.sol";
 import {ImmutableVeTokenConduit} from "../src/ImmutableVeTokenConduit.sol";
+import {IAlgebraFactory} from "../src/interfaces/IAlgebraFactory.sol";
+import {IAlgebraPool} from "../src/interfaces/IAlgebraPool.sol";
 import {IBribe} from "../src/interfaces/IBribe.sol";
 import {IERC20} from "../src/interfaces/IERC20.sol";
+import {IVolatilityOracle} from "../src/interfaces/IVolatilityOracle.sol";
 import {IVoter} from "../src/interfaces/IVoter.sol";
 import {IVotingEscrow} from "../src/interfaces/IVotingEscrow.sol";
+import {Reference} from "./utils/Reference.sol";
 
 interface IVoterExtra {
     function VOTE_DELAY() external view returns (uint256);
@@ -63,6 +67,51 @@ interface IApprove {
     function approve(address spender, uint256 amount) external returns (bool);
 }
 
+interface IAccessControlEnumerable {
+    function POOLS_ADMINISTRATOR_ROLE() external view returns (bytes32);
+    function getRoleMemberCount(bytes32 role) external view returns (uint256);
+    function getRoleMember(bytes32 role, uint256 index) external view returns (address);
+}
+
+interface IAlgebraPoolExtra {
+    function globalState() external view returns (uint160, int24, uint16, uint8, uint16, bool);
+    function setPlugin(address plugin) external;
+}
+
+interface ICustomPoolEntryPoint {
+    function createCustomPool(address deployer, address creator, address tokenA, address tokenB, bytes calldata data)
+        external
+        returns (address);
+    function setPlugin(address pool, address plugin) external;
+    function setPluginConfig(address pool, uint8 config) external;
+}
+
+contract CustomPoolDeployer {
+    function beforeCreatePoolHook(address, address, address, address, address, bytes calldata)
+        external
+        pure
+        returns (address)
+    {
+        return address(0);
+    }
+
+    function afterCreatePoolHook(address, address, address) external pure {}
+
+    function create(ICustomPoolEntryPoint entry, address tokenA, address tokenB) external returns (address) {
+        return entry.createCustomPool(address(this), address(this), tokenA, tokenB, "");
+    }
+
+    function setPlugin(ICustomPoolEntryPoint entry, address pool, address plugin) external {
+        entry.setPlugin(pool, plugin);
+    }
+}
+
+contract GasBurner {
+    fallback() external {
+        for (uint256 i; i < type(uint256).max; ++i) {}
+    }
+}
+
 interface IFeed {
     function description() external view returns (string memory);
     function decimals() external view returns (uint8);
@@ -74,7 +123,11 @@ contract ForkTest is Test {
 
     uint256 internal constant WEEK = 604800;
     bytes32 internal constant IMPL_SLOT = 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
+    bytes32 internal constant ADMIN_SLOT = 0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103;
     uint256 internal constant WEIGHTS_PER_EPOCH_SLOT = 22;
+    uint256 internal constant REWARD_DATA_SLOT = 53;
+    uint256 internal constant NONE = type(uint256).max;
+    uint256 internal constant TX_GAS_CAP = 2 ** 24;
 
     address internal constant VOTER = 0xc69E3eF39E3fFBcE2A1c570f8d3ADF76909ef17b;
     address internal constant VOTER_IMPL = 0x9CB9fc7D128F89CBD43Bbfd89dBAb05D1FA17233;
@@ -91,6 +144,17 @@ contract ForkTest is Test {
     address internal constant WETH = 0x4200000000000000000000000000000000000006;
     address internal constant HYDX = 0x00000e7efa313F4E11Bfff432471eD9423AC6B30;
     address internal constant SEQUENCER_FEED = 0xBCF85224fc0756B9Fa45aA7892530B47e10b6433;
+    address internal constant ALGEBRA_FACTORY = 0x36077D39cdC65E1e3FB65810430E5b2c4D5fA29E;
+    address internal constant ALGEBRA_OWNER = 0x74266f2b206D1359B83fc74949EF07176FB3AE03;
+    address internal constant ALGEBRA_ENTRY_POINT = 0x00EdE53f39415E64c78eebD02AD9D383b3A0C0F1;
+    address internal constant ALGEBRA_ADMIN = 0xDeaD1F5aF792afc125812E875A891b038f888258;
+    address internal constant PLUGIN_BEACON = 0x106937fC03212A762be17D529893A32E47bA13a1;
+    address internal constant PLUGIN_IMPL = 0xAF11628e68e8bD45375560E549Ab8411FA034D4F;
+    address internal constant PLUGIN_FACTORY = 0xa8dD4C05796801C734E99d5582E90e3a8bD88194;
+    address internal constant PLUGIN_FACTORY_IMPL = 0xde57C7d4d2E98DaFb7cDC59E9c88d28f543AE922;
+    address internal constant PLUGIN_FACTORY_ADMIN = 0x2689EF6a746f1b253CD772Fb045a7563505bEd00;
+    address internal constant BROKEN_POOL = 0xa69256ea019648815B1a3CE1C83C0D00a288dfc7;
+    address internal constant USDC_VAULT = 0xBEEFE94c8aD530842bfE7d8B397938fFc1cb83b2;
 
     bytes32 internal constant VOTER_PROXY_CODEHASH = 0xbdf20cb78c052fa6ad3cfe77fde23f9eea05a6f1f4087c07ecde2f274a2b36e1;
     bytes32 internal constant VOTER_IMPL_CODEHASH = 0x42618eac51788e20459a854690666979bd13bbe185e3323bd6d7dd59ee8a31b0;
@@ -102,6 +166,17 @@ contract ForkTest is Test {
     bytes32 internal constant APPROVAL_LOGIC_CODEHASH =
         0xd1fab3adcd045439b72359a675665cb9f9267b32aebb140df865fc723681a930;
     bytes32 internal constant TREASURY_CODEHASH = 0x4e381985ca68b3e5d27b4425fa581c19cf33146d3f887a3cfca96f55528ea46f;
+    bytes32 internal constant ALGEBRA_FACTORY_CODEHASH =
+        0x6f54720c3eb4326e8cf846308b98ab0c0d070a441ca11ba8cd00be0256af7084;
+    bytes32 internal constant PLUGIN_BEACON_CODEHASH =
+        0x2105a3ca212415ea232cb45c3d9a073ea881378afadc776198c59f79d018f97e;
+    bytes32 internal constant PLUGIN_IMPL_CODEHASH = 0x51aab6d45348f1b652884dcf8e4eaf06c54de68760f64f8487c5d670fc3488e4;
+    bytes32 internal constant PLUGIN_FACTORY_IMPL_CODEHASH =
+        0xdda4b448b3ffa656fa5fdf88c424df94489a500023f889669e8632767edba9e5;
+    bytes32 internal constant PLUGIN_FACTORY_ADMIN_CODEHASH =
+        0x8b4085015bf2b807a59b2290edcd3886b049469b05572e4b9e1b7fc0e430d9c9;
+    bytes32 internal constant ALGEBRA_ENTRY_POINT_CODEHASH =
+        0x200c23737ade01ef361202814d1fb721b9dc811cf5f4345875c99770384ec3b2;
 
     uint256 internal constant TOKEN_ID = 14_247;
     address internal constant HOLDER = 0xa79cd47655156b299762DFE92A67980805ce5a31;
@@ -169,12 +244,37 @@ contract ForkTest is Test {
         return keccak256(abi.encode(pool, keccak256(abi.encode(epoch, WEIGHTS_PER_EPOCH_SLOT))));
     }
 
-    function _replayMarket(uint256 epoch) internal {
+    function _rewardSlot(address token, uint256 epoch) internal pure returns (bytes32) {
+        return bytes32(uint256(keccak256(abi.encode(epoch, keccak256(abi.encode(token, REWARD_DATA_SLOT))))) + 1);
+    }
+
+    function _credit(address bribe, address token, uint256 amount, uint256 epoch) internal {
+        bytes32 slot = _rewardSlot(token, epoch);
+        uint256 total = uint256(vm.load(bribe, slot)) + amount;
+        vm.store(bribe, slot, bytes32(total));
+        (, uint256 recorded,) = IBribe(bribe).rewardData(token, epoch);
+        assertEq(recorded, total);
+    }
+
+    function _pricedIndex(address token) internal view returns (uint256) {
+        ImmutableVeTokenConduit.PricedToken[] memory p = d.pricedTokens();
+        for (uint256 i; i < p.length; ++i) {
+            if (p[i].token == token) return i;
+        }
+        return NONE;
+    }
+
+    function _replayMarket(uint256 epoch) internal returns (uint256 tails) {
         address[] memory bribes = fx.readAddressArray(".market.bribes");
         address[] memory tokens = fx.readAddressArray(".market.tokens");
         uint256[] memory amounts = fx.readUintArray(".market.amounts");
         for (uint256 i; i < bribes.length; ++i) {
-            _notify(bribes[i], tokens[i], amounts[i]);
+            if (_pricedIndex(tokens[i]) != NONE) {
+                _notify(bribes[i], tokens[i], amounts[i]);
+            } else {
+                _credit(bribes[i], tokens[i], amounts[i], epoch);
+                ++tails;
+            }
         }
         address[] memory pools = fx.readAddressArray(".market.pools");
         uint256[] memory others = fx.readUintArray(".market.others");
@@ -186,6 +286,26 @@ contract ForkTest is Test {
 
     function _externalBribe(address pool) internal view returns (address) {
         return IVoter(VOTER).external_bribes(IVoter(VOTER).gauges(pool));
+    }
+
+    function _amountWorth(address token, uint256 usd) internal view returns (uint256) {
+        uint256 i = _pricedIndex(token);
+        (,,, uint256 mul, uint256 div) = conduit.pricedTokens(i);
+        return usd * div / (fx.readUintArray(".answers")[i] * mul) + 1;
+    }
+
+    function _feeBribe(address pool) internal view returns (address) {
+        return IVoter(VOTER).internal_bribes(IVoter(VOTER).gauges(pool));
+    }
+
+    function _twap(address pool, bool ofToken1) internal view returns (int256 tick) {
+        uint32[] memory ago = new uint32[](2);
+        ago[0] = conduit.TWAP_WINDOW();
+        (int56[] memory c,) = IVolatilityOracle(IAlgebraPool(pool).plugin()).getTimepoints(ago);
+        int256 sum = ofToken1 ? int256(c[0]) - c[1] : int256(c[1]) - c[0];
+        int256 window = int256(uint256(ago[0]));
+        tick = sum / window;
+        if (sum < 0 && sum % window != 0) --tick;
     }
 
     function _repeat(address[] memory tokens, uint256 n) internal pure returns (address[][] memory r) {
@@ -227,6 +347,55 @@ contract ForkTest is Test {
         uint256 epoch = fx.readUint(".epoch");
         assertEq(uint256(vm.load(VOTER, _weightSlot(pool, epoch))), IVoterExtra(VOTER).weightsAt(pool, epoch));
         assertGt(IVoterExtra(VOTER).weightsAt(pool, epoch), 0);
+
+        address token = fx.readAddressArray(".market.tokens")[0];
+        (, uint256 recorded,) = IBribe(bribe).rewardData(token, epoch);
+        assertGt(recorded, 0);
+        assertEq(uint256(vm.load(bribe, _rewardSlot(token, epoch))), recorded);
+    }
+
+    function test_pin_algebra() public {
+        _deploy();
+        assertEq(d.ALGEBRA_FACTORY(), ALGEBRA_FACTORY);
+        assertEq(ALGEBRA_FACTORY.codehash, ALGEBRA_FACTORY_CODEHASH);
+        assertEq(IOwned(ALGEBRA_FACTORY).owner(), ALGEBRA_OWNER);
+        assertEq(IBeacon(PLUGIN_BEACON).implementation(), PLUGIN_IMPL);
+        assertEq(IOwned(PLUGIN_BEACON).owner(), PLUGIN_FACTORY);
+        assertEq(PLUGIN_BEACON.codehash, PLUGIN_BEACON_CODEHASH);
+        assertEq(PLUGIN_IMPL.codehash, PLUGIN_IMPL_CODEHASH);
+        IAccessControlEnumerable roles = IAccessControlEnumerable(ALGEBRA_FACTORY);
+        bytes32 admins = roles.POOLS_ADMINISTRATOR_ROLE();
+        assertEq(roles.getRoleMemberCount(admins), 2);
+        assertEq(roles.getRoleMember(admins, 0), ALGEBRA_ENTRY_POINT);
+        assertEq(roles.getRoleMember(admins, 1), ALGEBRA_ADMIN);
+        assertEq(roles.getRoleMemberCount(bytes32(0)), 1);
+        assertEq(roles.getRoleMember(bytes32(0), 0), ALGEBRA_OWNER);
+        bytes32 deployers = keccak256("CUSTOM_POOL_DEPLOYER");
+        assertEq(roles.getRoleMemberCount(deployers), 1);
+        assertEq(roles.getRoleMember(deployers, 0), ALGEBRA_ENTRY_POINT);
+        assertEq(ALGEBRA_ENTRY_POINT.codehash, ALGEBRA_ENTRY_POINT_CODEHASH);
+        bytes32 upgraders = keccak256("ALGEBRA_BASE_PLUGIN_FACTORY_ADMINISTRATOR");
+        assertEq(roles.getRoleMemberCount(upgraders), 1);
+        assertEq(roles.getRoleMember(upgraders, 0), ALGEBRA_ADMIN);
+        assertEq(address(uint160(uint256(vm.load(PLUGIN_FACTORY, IMPL_SLOT)))), PLUGIN_FACTORY_IMPL);
+        assertEq(PLUGIN_FACTORY_IMPL.codehash, PLUGIN_FACTORY_IMPL_CODEHASH);
+        assertEq(address(uint160(uint256(vm.load(PLUGIN_FACTORY, ADMIN_SLOT)))), PLUGIN_FACTORY_ADMIN);
+        assertEq(PLUGIN_FACTORY_ADMIN.codehash, PLUGIN_FACTORY_ADMIN_CODEHASH);
+        assertEq(IOwned(PLUGIN_FACTORY_ADMIN).owner(), ALGEBRA_OWNER);
+
+        address[] memory pools = fx.readAddressArray(".gasPools");
+        address[] memory cores = fx.readAddressArray(".gasCores");
+        address[] memory tails = fx.readAddressArray(".gasTails");
+        for (uint256 i; i < pools.length; ++i) {
+            address fees = _feeBribe(pools[i]);
+            (address a, address b) = (IBribe(fees).rewardTokens(0), IBribe(fees).rewardTokens(1));
+            assertTrue((a == cores[i] && b == tails[i]) || (a == tails[i] && b == cores[i]));
+            assertTrue(_pricedIndex(cores[i]) != NONE);
+            assertEq(_pricedIndex(tails[i]), NONE);
+            assertEq(IAlgebraFactory(ALGEBRA_FACTORY).poolByPair(a, b), pools[i]);
+            int256 tick = _twap(pools[i], false);
+            assertLt(tick < 0 ? -tick : tick, conduit.TICK_EDGE());
+        }
     }
 
     function test_pin_feedsAndTreasury() public view {
@@ -272,7 +441,7 @@ contract ForkTest is Test {
         _deploy();
         _optIn();
         uint256 epoch = _nextEpoch();
-        _replayMarket(epoch);
+        assertGt(_replayMarket(epoch), 0, "the market prices no long-tail fees");
 
         uint256 power = fx.readUint(".power");
         assertEq(IVotingEscrow(VE).getPastVotes(address(conduit), epoch), power);
@@ -348,11 +517,36 @@ contract ForkTest is Test {
     }
 
     function test_vote_worstCaseGas() public {
+        uint256 total = _fullVoteGas(false);
+        emit log_named_uint("worst-case vote, with intrinsic gas", total);
+        assertLt(total, TX_GAS_CAP);
+    }
+
+    function test_vote_hostilePluginsFitTheTransactionGasCap() public {
+        uint256 total = _fullVoteGas(true);
+        emit log_named_uint("vote with 40 gas-burning plugins, with intrinsic gas", total);
+        assertLt(total, TX_GAS_CAP);
+    }
+
+    function _fullVoteGas(bool hostile) internal returns (uint256) {
         _deploy();
-        _optIn();
-        _nextEpoch();
+        uint256 epoch;
+        if (hostile) {
+            _optIn();
+            epoch = _nextEpoch();
+        } else {
+            epoch = fx.readUint(".epoch");
+            vm.mockCall(VE, abi.encodeCall(IVotingEscrow.getPastVotes, (address(conduit), epoch)), abi.encode(1e27));
+        }
         address[] memory candidates = fx.readAddressArray(".gasPools");
+        address[] memory cores = fx.readAddressArray(".gasCores");
+        address[] memory tails = fx.readAddressArray(".gasTails");
         uint256 n = conduit.MAX_POOLS();
+        for (uint256 i; i < candidates.length; ++i) {
+            address fees = _feeBribe(candidates[i]);
+            _credit(fees, cores[i], _amountWorth(cores[i], 10e18), epoch);
+            _credit(fees, tails[i], 1e18, epoch);
+        }
         address[] memory current = new address[](n);
         address[] memory proposal = new address[](n);
         uint256[] memory weights = new uint256[](n);
@@ -361,23 +555,35 @@ contract ForkTest is Test {
             proposal[i] = candidates[n + i];
             weights[i] = 1;
             _notify(_externalBribe(current[i]), USDC, 10e6);
-            _notify(_externalBribe(proposal[i]), USDC, 20e6);
+            _notify(_externalBribe(proposal[i]), USDC, 1000e6);
         }
         vm.prank(stranger);
         conduit.vote(current, weights);
         assertEq(IVoter(VOTER).poolVoteLength(address(conduit)), n);
 
         _next();
+        if (hostile) {
+            address burner = address(new GasBurner());
+            for (uint256 i; i < candidates.length; ++i) {
+                vm.prank(ALGEBRA_OWNER);
+                IAlgebraPoolExtra(candidates[i]).setPlugin(burner);
+            }
+            vm.expectCall(burner, abi.encodeWithSelector(IVolatilityOracle.getTimepoints.selector), uint64(2 * n));
+        } else {
+            for (uint256 i; i < candidates.length; ++i) {
+                vm.expectCall(
+                    IAlgebraPool(candidates[i]).plugin(),
+                    abi.encodeWithSelector(IVolatilityOracle.getTimepoints.selector)
+                );
+            }
+        }
+        uint256 intrinsic = 21_000 + 16 * abi.encodeCall(ImmutableVeTokenConduit.vote, (proposal, weights)).length;
         vm.prank(stranger);
-        conduit.vote(proposal, weights);
+        conduit.vote{gas: TX_GAS_CAP - intrinsic}(proposal, weights);
         Vm.Gas memory g = vm.lastFrameGas();
-        uint256 used = g.gasLimit - g.gasRemaining;
-        uint256 calldataGas = 16 * abi.encodeCall(ImmutableVeTokenConduit.vote, (proposal, weights)).length;
-        emit log_named_uint("worst-case vote, execution gas", used);
-        emit log_named_uint("worst-case vote, with intrinsic gas", used + 21_000 + calldataGas);
-        assertLt(used + 21_000 + calldataGas, 14_000_000);
         assertEq(IVoter(VOTER).poolVote(address(conduit), 0), proposal[0]);
         assertEq(IVoter(VOTER).votes(address(conduit), current[0]), 0);
+        return g.gasLimit - g.gasRemaining + intrinsic;
     }
 
     function test_vote_killedGaugeInForceStillCounts() public {
@@ -409,6 +615,119 @@ contract ForkTest is Test {
         pools[0] = candidates[1];
         vm.expectRevert(abi.encodeWithSelector(ImmutableVeTokenConduit.NotBetter.selector, score, score));
         conduit.vote(pools, weights);
+    }
+
+    function test_value_tailCountsUpToTheFeeBribesPricedTokens() public {
+        _deploy();
+        _optIn();
+        uint256 epoch = _nextEpoch();
+        address pool = fx.readAddressArray(".gasPools")[0];
+        address core = fx.readAddressArray(".gasCores")[0];
+        address tail = fx.readAddressArray(".gasTails")[0];
+        address fees = _feeBribe(pool);
+        _credit(fees, core, 10 ** IERC20(core).decimals(), epoch);
+        uint256 cap = conduit.poolValue(pool);
+        assertGt(cap, 0);
+
+        uint256 k = _pricedIndex(core);
+        (,,, uint256 mul, uint256 div) = conduit.pricedTokens(k);
+        uint256 perUnit = fx.readUintArray(".answers")[k] * mul;
+        int256 tick = _twap(pool, tail > core);
+        uint256 unit = Reference.tailValue(tick, 1e36, perUnit, div, type(uint256).max);
+        assertGt(unit, 0);
+        uint256 half = cap / 2 * 1e36 / unit;
+        _credit(fees, tail, half, epoch);
+        uint256 value = conduit.poolValue(pool);
+        assertApproxEqRel(value - cap, Reference.tailValue(tick, half, perUnit, div, cap), 1e9);
+        assertApproxEqRel(value, cap * 3 / 2, 1e15);
+
+        _credit(fees, tail, 10 * half, epoch);
+        assertEq(conduit.poolValue(pool), 2 * cap);
+        _credit(_externalBribe(pool), tail, 100 * half, epoch);
+        assertEq(conduit.poolValue(pool), 2 * cap);
+
+        vm.mockCall(
+            ALGEBRA_FACTORY, abi.encodeWithSelector(IAlgebraFactory.poolByPair.selector), abi.encode(BROKEN_POOL)
+        );
+        assertEq(conduit.poolValue(pool), cap);
+    }
+
+    function test_value_brokenPoolCountsOnlyItsPricedFees() public {
+        _deploy();
+        _optIn();
+        uint256 epoch = _nextEpoch();
+        address fees = _feeBribe(BROKEN_POOL);
+        assertEq(IBribe(fees).rewardTokens(0), USDC);
+        address vault = IBribe(fees).rewardTokens(1);
+        assertEq(IAlgebraFactory(ALGEBRA_FACTORY).poolByPair(USDC, vault), BROKEN_POOL);
+        (, int24 spot,,,,) = IAlgebraPoolExtra(BROKEN_POOL).globalState();
+        assertEq(spot, -887_272);
+        assertLe(_twap(BROKEN_POOL, false), -conduit.TICK_EDGE());
+
+        _credit(fees, USDC, 100e6, epoch);
+        uint256 value = conduit.poolValue(BROKEN_POOL);
+        assertEq(value, 100e6 * fx.readUintArray(".answers")[2] * 1e4);
+        _credit(fees, vault, 1e18, epoch);
+        assertEq(conduit.poolValue(BROKEN_POOL), value);
+    }
+
+    function test_value_singleAssetVaultHasNoTail() public {
+        _deploy();
+        _optIn();
+        uint256 epoch = _nextEpoch();
+        address fees = _feeBribe(USDC_VAULT);
+        assertEq(IBribe(fees).rewardTokens(0), USDC);
+        address second = IBribe(fees).rewardTokens(1);
+        assertEq(IAlgebraFactory(ALGEBRA_FACTORY).poolByPair(USDC, second), address(0));
+
+        _credit(fees, USDC, 100e6, epoch);
+        uint256 value = conduit.poolValue(USDC_VAULT);
+        _credit(fees, second, 1e24, epoch);
+        assertEq(conduit.poolValue(USDC_VAULT), value);
+    }
+
+    function test_algebra_onlyItsAdministratorsCanReplaceAPlugin() public {
+        _deploy();
+        _optIn();
+        uint256 epoch = _nextEpoch();
+        address pool = fx.readAddressArray(".gasPools")[0];
+        address fees = _feeBribe(pool);
+        address core = fx.readAddressArray(".gasCores")[0];
+        _credit(fees, core, 10 ** IERC20(core).decimals(), epoch);
+        uint256 cap = conduit.poolValue(pool);
+        _credit(fees, fx.readAddressArray(".gasTails")[0], type(uint128).max, epoch);
+        assertEq(conduit.poolValue(pool), 2 * cap);
+
+        address[3] memory others = [stranger, HOLDER, BRIBE_OWNER];
+        for (uint256 i; i < others.length; ++i) {
+            vm.prank(others[i]);
+            vm.expectRevert(abi.encodeWithSignature("notAllowed()"));
+            IAlgebraPoolExtra(pool).setPlugin(stranger);
+        }
+        vm.prank(ALGEBRA_OWNER);
+        IAlgebraPoolExtra(pool).setPlugin(stranger);
+        assertEq(conduit.poolValue(pool), cap);
+    }
+
+    function test_algebra_customPoolDeployersOnlyControlTheirOwnPools() public {
+        address pool = fx.readAddressArray(".gasPools")[0];
+        address core = fx.readAddressArray(".gasCores")[0];
+        address tail = fx.readAddressArray(".gasTails")[0];
+        address plugin = IAlgebraPool(pool).plugin();
+        ICustomPoolEntryPoint entry = ICustomPoolEntryPoint(ALGEBRA_ENTRY_POINT);
+        CustomPoolDeployer deployer = new CustomPoolDeployer();
+        address custom = deployer.create(entry, core, tail);
+        assertTrue(custom != pool);
+        assertEq(IAlgebraFactory(ALGEBRA_FACTORY).poolByPair(core, tail), pool);
+        deployer.setPlugin(entry, custom, stranger);
+        assertEq(IAlgebraPool(custom).plugin(), stranger);
+
+        vm.expectRevert("Only deployer");
+        deployer.setPlugin(entry, pool, stranger);
+        vm.prank(stranger);
+        vm.expectRevert("Only deployer");
+        entry.setPluginConfig(pool, 0);
+        assertEq(IAlgebraPool(pool).plugin(), plugin);
     }
 
     function _claimArgs()
