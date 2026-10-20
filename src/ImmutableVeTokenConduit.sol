@@ -47,7 +47,6 @@ contract ImmutableVeTokenConduit {
     uint256 public constant SEQUENCER_GRACE = 3600;
     uint32 public constant TWAP_WINDOW = 1800;
     uint256 public constant TWAP_GAS = 120_000;
-    // 1.0001^740000 is about 10^32, and inside it _ratio is accurate to a millionth
     int256 public constant TICK_EDGE = 740_000;
     uint256 private constant WEEK = 604800;
     uint256 private constant MAX_PRICED_TOKENS = 4;
@@ -302,7 +301,6 @@ contract ImmutableVeTokenConduit {
         return usd + _tailValue(tick, amount, ctx.answers[k] * o.mul, o.div, usd);
     }
 
-    // one raw unit of the tail is worth 1.0001^tick raw units of the core token
     function _tailValue(int256 tick, uint256 amount, uint256 perUnit, uint256 div, uint256 cap)
         private
         pure
@@ -312,7 +310,6 @@ contract ImmutableVeTokenConduit {
         uint256 r = _ratio(uint256(tick < 0 ? -tick : tick));
         uint256 core;
         if (tick <= 0) {
-            // amount in 128-bit halves, so that neither product overflows
             core = (amount >> 128) * r + ((amount & type(uint128).max) * r >> 128);
         } else {
             core = amount > type(uint128).max ? type(uint256).max : (amount << 128) / r;
@@ -321,14 +318,12 @@ contract ImmutableVeTokenConduit {
         return core * perUnit / div;
     }
 
-    // the tail's average tick over the last TWAP_WINDOW seconds, rounded down, against the tail
     function _twapTick(address pool, bool tailIsToken1) private view returns (bool ok, int256 tick) {
         address plugin = IAlgebraPool(pool).plugin();
         uint32[] memory ago = new uint32[](2);
         ago[0] = TWAP_WINDOW;
         bytes memory data = abi.encodeCall(IVolatilityOracle.getTimepoints, (ago));
         bytes memory ret = new bytes(256);
-        // caps the plugin's gas, and copies at most 256 bytes of its answer however much it returns
         assembly ("memory-safe") {
             ok := staticcall(TWAP_GAS, plugin, add(data, 0x20), mload(data), add(ret, 0x20), 256)
             ok := and(ok, eq(returndatasize(), 256))
@@ -345,7 +340,6 @@ contract ImmutableVeTokenConduit {
         ok = tick > -TICK_EDGE && tick < TICK_EDGE;
     }
 
-    // 1.0001^-x as a Q128 fraction, for x < 2^20
     function _ratio(uint256 x) private pure returns (uint256 r) {
         r = 1 << 128;
         if (x & 0x1 != 0) r = r * 0xfff97272373d413259a46990580e2139 >> 128;

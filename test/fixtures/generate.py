@@ -166,7 +166,6 @@ def tails(block, epoch, live, intl, answers):
     )
     out = {}
     for (k, pair, core, tail), state, plugin, twap in zip(candidates, states, plugins, twaps):
-        # After the replay's week without swaps, the plugin extrapolates both timepoints from the pool's current tick
         tick = signed(state[1])
         if valid_twap(twap) and -TICK_EDGE < tick < TICK_EDGE:
             out[k] = (core, tail, tick if int(tail, 16) < int(PRICED[core][0], 16) else -tick, addr(plugin[0]))

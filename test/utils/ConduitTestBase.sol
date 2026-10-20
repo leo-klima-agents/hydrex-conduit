@@ -110,7 +110,6 @@ abstract contract ConduitTestBase is Test {
         return MockBribe(voter.internal_bribes(voter.gauges(pool)));
     }
 
-    // the plugin prices one unit of `tail` at 1.0001^tailTick units of `core`
     function _tailPool(address core, address tail, int256 tailTick) internal returns (address pool, MockPlugin plugin) {
         plugin = new MockPlugin();
         plugin.setTick(tail < core ? tailTick : -tailTick);

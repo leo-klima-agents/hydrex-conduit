@@ -298,7 +298,6 @@ contract ForkTest is Test {
         return IVoter(VOTER).internal_bribes(IVoter(VOTER).gauges(pool));
     }
 
-    // token0's mean tick over the conduit's window, or token1's if ofToken1, rounded down as the conduit rounds it
     function _twap(address pool, bool ofToken1) internal view returns (int256 tick) {
         uint32[] memory ago = new uint32[](2);
         ago[0] = conduit.TWAP_WINDOW();
@@ -529,9 +528,6 @@ contract ForkTest is Test {
         assertLt(total, TX_GAS_CAP);
     }
 
-    // Replaces a 20-pool vote with 20 other pools within a Base transaction's gas limit, and returns the second vote's
-    // gas. Honest plugins read live timepoints in the fixture's epoch. Gas burners use their whole budget in a fresh
-    // epoch, where the Voter writes new storage, which is the most a vote can cost.
     function _fullVoteGas(bool hostile) internal returns (uint256) {
         _deploy();
         uint256 epoch;

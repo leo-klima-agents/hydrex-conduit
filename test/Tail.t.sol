@@ -228,7 +228,6 @@ contract TailTest is ConduitTestBase {
     function test_tail_ratioConstants() public {
         uint256 core = 1e39;
         for (uint256 i; i < 20; ++i) {
-            // forge-lint: disable-next-line(unsafe-typecast)
             (address pool,) = _tailPool(address(usdc), LOW, -int256(1 << i));
             _fee(pool, address(usdc), core);
             _fee(pool, LOW, 1 << 128);
