@@ -75,11 +75,11 @@ jq -j '.sources["@cryptoalgebra/volatility-oracle-plugin/contracts/interfaces/IV
 | VotingEscrow approval logic (`approvalLogic()`) | `0x4B0BC0889EB524Dbae36d409fF733851E9B4f63D` | `0xd1fab3adcd045439b72359a675665cb9f9267b32aebb140df865fc723681a930` |
 | Bribe beacon | `0x5aeb9f88b66cd94f0ce50d139f9fc257b65411c2` | `0xaaa27093ce9a3136b77cbcbfbee1c26a564b1d2742bc57f916f1cafe5e41f956` |
 | Bribe implementation (`implementation()`) | `0x6225a2b81f83a71c0595449a224fc2385dfaa28d` | `0x419b9ff2bbe35af4ba4fb135c4f4a2cc215e0c212196d0b0d5dbf7bb6f301055` |
-| Bribe owner, bribe factory owner, and since block 53,254,030 (2026-10-29) the Algebra factory owner and its only default admin | `0x1aE3753d9b60743A89159CcFF8E251C60B560311` | |
+| Bribe owner, bribe factory owner, and Algebra factory owner and its only default admin | `0x1aE3753d9b60743A89159CcFF8E251C60B560311` | |
 | Minter proxy | `0xA7D64625F45548a19B2A19e28E7546bb2839003E` | |
 | `TREASURY`, a Safe 1.5.0 proxy (2 of 3) | `0x450c72de8c0079B49AcedF294a13011bd09D125B` | `0x4e381985ca68b3e5d27b4425fa581c19cf33146d3f887a3cfca96f55528ea46f` |
 | Algebra factory | `0x36077D39cdC65E1e3FB65810430E5b2c4D5fA29E` | `0x6f54720c3eb4326e8cf846308b98ab0c0d070a441ca11ba8cd00be0256af7084` |
-| Algebra factory owner until block 53,254,030; since block 53,473,512 (2026-11-03) a pool administrator and base plugin manager (`POOLS_ADMINISTRATOR_ROLE`, `ALGEBRA_BASE_PLUGIN_MANAGER`); the plugin factory proxy admin's owner | `0x74266f2b206D1359B83fc74949EF07176FB3AE03` | |
+| Algebra pool administrator and base plugin manager (`POOLS_ADMINISTRATOR_ROLE`, `ALGEBRA_BASE_PLUGIN_MANAGER`), and owner of the plugin factory proxy admin | `0x74266f2b206D1359B83fc74949EF07176FB3AE03` | |
 | Algebra custom-pool entry point, a pool administrator and the only `CUSTOM_POOL_DEPLOYER` | `0x00EdE53f39415E64c78eebD02AD9D383b3A0C0F1` | `0x200c23737ade01ef361202814d1fb721b9dc811cf5f4345875c99770384ec3b2` |
 | Algebra pool and plugin factory administrator and base plugin manager (`POOLS_ADMINISTRATOR_ROLE`, `ALGEBRA_BASE_PLUGIN_FACTORY_ADMINISTRATOR`, `ALGEBRA_BASE_PLUGIN_MANAGER`), an EIP-7702 account | `0xDeaD1F5aF792afc125812E875A891b038f888258` | |
 | Upgradeable plugin beacon | `0x106937fC03212A762be17D529893A32E47bA13a1` | `0x2105a3ca212415ea232cb45c3d9a073ea881378afadc776198c59f79d018f97e` |
@@ -121,9 +121,8 @@ files are in the sources on Sourcify of the contract named in the implementation
    (line 704), and a dead gauge is skipped (line 711).
 3. **One vote per second.** `VOTE_DELAY` is set to 0 (`VoterV5.sol` line 174; the fork test reads it) and is enforced
    with `currentTime > lastVoted[_voter] + VOTE_DELAY` (line 748), and `vote` sets `lastVoted` to `block.timestamp`
-   (line 691). A voter votes or resets at most once per `block.timestamp`, so once per second; since Denim that is once
-   every five blocks, not once per block (fact 15). The fork test checks that a later block in the same second rejects
-   a second vote.
+   (line 691). A voter votes or resets at most once per `block.timestamp`, so once per second, which spans five blocks
+   (fact 15). The fork test checks that a later block in the same second rejects a second vote.
 4. **Votes reset first.** `_vote` calls `_reset` (`VoterV5.sol` line 695), which loops over every pool of the
    previous vote and withdraws from both of its bribes (lines 635-666). The cost of a vote grows with the size of the
    one it replaces. Last epoch's `votes` stay in storage until then, but only this epoch's are in `weights`
@@ -176,8 +175,7 @@ files are in the sources on Sourcify of the contract named in the implementation
     `getTimepoints` extrapolates past the last timepoint with the pool's current tick (`VolatilityOracle.sol` line
     119). So a window that ends at the current timestamp contains no tick set at that timestamp: the first swap in that
     second records the tick from before it, and until then the pool's current tick is the one left before that second,
-    whichever of the second's blocks reads it. Accumulators are weighted by seconds, so 200 ms blocks don't change the
-    average (fact 15).
+    whichever of the second's blocks reads it.
 13. **Plugin administration.** Only the Algebra factory's owner or a pool administrator can replace a pool's plugin
     (`AlgebraPool.sol` lines 472-474 and 497-501). They and the plugin itself can change its plugin config (lines
     504-511). Neither plugin's code clears the before-swap flag: each only resets its default config, which has it, or
@@ -193,12 +191,9 @@ files are in the sources on Sourcify of the contract named in the implementation
     point can't act on a pool the conduit counts. The upgradeable plugins follow a beacon owned by a plugin factory,
     which upgrades it for the Algebra factory's owner and holders of its `ALGEBRA_BASE_PLUGIN_FACTORY_ADMINISTRATOR`
     role ([`AlgebraUpgradeablePluginFactory.sol`](https://repo.sourcify.dev/8453/0xde57C7d4d2E98DaFb7cDC59E9c88d28f543AE922)
-    lines 56-60 and 242-244) through the factory's `hasRoleOrOwner`, so it follows the factory's current owner. The
-    plugin factory is itself a proxy, administered by a proxy admin owned by
-    `0x74266f2b206D1359B83fc74949EF07176FB3AE03`. That address owned the Algebra factory until block 53,254,030
-    (2026-10-29), when it transferred the factory to the bribes' owner, which made it a pool administrator and base
-    plugin manager at block 53,473,512 (2026-11-03). The plugins themselves act for their factory, the Algebra factory's
-    owner and holders of `ALGEBRA_BASE_PLUGIN_MANAGER` (`AlgebraBasePlugin.sol` line 16,
+    lines 56-60 and 242-244) through the factory's `hasRoleOrOwner`. The plugin factory is itself a proxy, administered
+    by a proxy admin owned by `0x74266f2b206D1359B83fc74949EF07176FB3AE03`. The plugins themselves act for their
+    factory, the Algebra factory's owner and holders of `ALGEBRA_BASE_PLUGIN_MANAGER` (`AlgebraBasePlugin.sol` line 16,
     `UpgradeableAbstractPlugin.sol` line 66), within the config changes above. The upgradeable plugins delegate their
     oracle to a separate implementation (`VolatilityOracleConnector.sol` line 41). `test/Fork.t.sol` pins the
     factory's roles and the plugin factory's administration, and checks that a stranger can't replace a plugin while
@@ -206,14 +201,13 @@ files are in the sources on Sourcify of the contract named in the implementation
     plugin only stops the tail from counting.
 14. **Storage.** `rewardData` is at slot 53 of a bribe's storage. `test/Fork.t.sol` writes it to replay deposits of
     tokens it can't mint, and checks the slot against a real deposit.
-15. **Base's clock.** Since Base's Denim upgrade, at block 53,556,127 (2026-11-05 18:00:01 UTC), Base makes a block
-    every 200 ms instead of every 2 s, with no skipped slots, and `block.timestamp` still counts whole seconds, so five
-    consecutive blocks share it ([Denim specification](https://docs.base.org/upgrades/denim/200ms-blocks)). The new
-    `timestampMs` field in RPC headers and the BaseTime predeploy at `0x4200000000000000000000000000000000000030` carry
-    the milliseconds; the conduit uses neither. Everything it times uses `block.timestamp`: epochs, Chainlink price
-    ages, the sequencer's grace hour, the TWAP window, and the Voter's vote delay (fact 3). Only `lastClaimBlock`
-    reads `block.number`, and only to mark where a claim's logs are. Blocks now hold 40M gas, more than the
-    16,777,216-gas transaction cap a vote stays within.
+15. **Base's clock.** Base makes a block every 200 ms, with no skipped slots, and `block.timestamp` counts whole
+    seconds, so five consecutive blocks share it
+    ([specification](https://docs.base.org/upgrades/denim/200ms-blocks)). The `timestampMs` field in RPC headers and
+    the BaseTime predeploy at `0x4200000000000000000000000000000000000030` carry the milliseconds; the conduit uses
+    neither. Everything it times uses `block.timestamp`: epochs, Chainlink price ages, the sequencer's grace hour, the
+    TWAP window, and the Voter's vote delay (fact 3). Only `lastClaimBlock` reads `block.number`, and only to mark
+    where a claim's logs are. Blocks hold 40M gas, more than the 16,777,216-gas transaction cap a vote stays within.
 
 ## Selectors
 

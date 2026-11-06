@@ -107,11 +107,10 @@ conduit first.
 [Trust and limitations](#trust-and-limitations). Like `vote`, they revert with `EpochStale` until someone calls
 `update_period()` on the Hydrex minter at the start of an epoch, with `NoVotingPower` if the conduit had no delegated
 votes when the epoch started, and with `SequencerDown` while the sequencer is down or in the hour after it comes back.
-The Voter accepts one vote per second, not per block: it compares `block.timestamp`, which counts whole seconds, and
-since its Denim upgrade (block 53,556,127, 2026-11-05) Base makes a block every 200 ms, so five blocks share each
-second. A second vote in the same second reverts with `VoteDelayNotMet()`, whichever block it lands in, so time votes
-by `block.timestamp`, not by counting blocks. Replacing a vote of 20 pools with 20 others costs up to about 13M gas,
-and never more than about 15.8M whatever the pools' plugins do, within Base's limit of 16,777,216 gas per transaction.
+The Voter accepts one vote per second: it compares `block.timestamp`, which counts whole seconds, and Base makes a
+block every 200 ms, so a second vote in the same second reverts with `VoteDelayNotMet()`, whichever block it lands in.
+Replacing a vote of 20 pools with 20 others costs up to about 13M gas, and never more than about 15.8M whatever the
+pools' plugins do, within Base's limit of 16,777,216 gas per transaction.
 
 ### Claiming rewards
 
@@ -140,10 +139,10 @@ address: it makes the whole claim revert.
   delegators receive from a pool is always at least half of what the conduit counts for it. Until someone proposes
   again, a pushed-down price can let a worse proposal win, and a pushed-up price can keep a worse vote in force.
 - Three addresses can replace an Algebra pool's plugin or change its configuration: Algebra's factory owner,
-  `0x1aE3753d9b60743A89159CcFF8E251C60B560311`, the same address as the bribes' owner since 2026-10-29, and its pool
-  administrators `0xDeaD1F5aF792afc125812E875A891b038f888258` and `0x74266f2b206D1359B83fc74949EF07176FB3AE03`, the
-  owner until then. The first two can also upgrade the upgradeable plugins, and the third can upgrade the plugin
-  factory that does so. The owner can give these rights to others. A broken or hostile plugin can make a pool's
+  `0x1aE3753d9b60743A89159CcFF8E251C60B560311`, which is also the bribes' owner, and its pool administrators
+  `0xDeaD1F5aF792afc125812E875A891b038f888258` and `0x74266f2b206D1359B83fc74949EF07176FB3AE03`. The first two can
+  also upgrade the upgradeable plugins, and the third can upgrade the plugin factory that does so. The owner can give
+  these rights to others. A broken or hostile plugin can make a pool's
   other-token fees count up to the cap, or not at all, but it gets at most `TWAP_GAS` per call, so it can't make a
   vote too expensive to send. Anyone can replace the plugin of an Algebra custom pool they create, so only a pair's
   base pool counts.
@@ -187,8 +186,8 @@ commit `c83a8d1`.
 
 Deployment steps:
 
-1. Install Foundry v1.9.0, the version CI uses, with `foundryup --install v1.9.0`. It compiles the same bytecode as
-   v1.8.5, which built the deployed contract. Another version can compile different bytecode.
+1. Install Foundry v1.9.0, the version CI uses, with `foundryup --install v1.9.0`. Another version can compile
+   different bytecode.
 2. Run `forge test` with `BASE_RPC_URL` set, then `script/check-verification.sh`.
 3. Do a dry run with `forge script script/Deploy.s.sol --rpc-url $BASE_RPC_URL`, and check that it logs the address
    in the table above.

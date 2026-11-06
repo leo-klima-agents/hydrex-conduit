@@ -144,7 +144,7 @@ contract ForkTest is Test {
     address internal constant SEQUENCER_FEED = 0xBCF85224fc0756B9Fa45aA7892530B47e10b6433;
     address internal constant ALGEBRA_FACTORY = 0x36077D39cdC65E1e3FB65810430E5b2c4D5fA29E;
     address internal constant ALGEBRA_OWNER = 0x1aE3753d9b60743A89159CcFF8E251C60B560311;
-    address internal constant ALGEBRA_FORMER_OWNER = 0x74266f2b206D1359B83fc74949EF07176FB3AE03;
+    address internal constant PLUGIN_FACTORY_ADMIN_OWNER = 0x74266f2b206D1359B83fc74949EF07176FB3AE03;
     address internal constant ALGEBRA_ENTRY_POINT = 0x00EdE53f39415E64c78eebD02AD9D383b3A0C0F1;
     address internal constant ALGEBRA_ADMIN = 0xDeaD1F5aF792afc125812E875A891b038f888258;
     address internal constant PLUGIN_BEACON = 0x106937fC03212A762be17D529893A32E47bA13a1;
@@ -371,7 +371,7 @@ contract ForkTest is Test {
         assertEq(roles.getRoleMemberCount(admins), 3);
         assertEq(roles.getRoleMember(admins, 0), ALGEBRA_ENTRY_POINT);
         assertEq(roles.getRoleMember(admins, 1), ALGEBRA_ADMIN);
-        assertEq(roles.getRoleMember(admins, 2), ALGEBRA_FORMER_OWNER);
+        assertEq(roles.getRoleMember(admins, 2), PLUGIN_FACTORY_ADMIN_OWNER);
         assertEq(roles.getRoleMemberCount(bytes32(0)), 1);
         assertEq(roles.getRoleMember(bytes32(0), 0), ALGEBRA_OWNER);
         bytes32 deployers = keccak256("CUSTOM_POOL_DEPLOYER");
@@ -384,12 +384,12 @@ contract ForkTest is Test {
         bytes32 managers = keccak256("ALGEBRA_BASE_PLUGIN_MANAGER");
         assertEq(roles.getRoleMemberCount(managers), 2);
         assertEq(roles.getRoleMember(managers, 0), ALGEBRA_ADMIN);
-        assertEq(roles.getRoleMember(managers, 1), ALGEBRA_FORMER_OWNER);
+        assertEq(roles.getRoleMember(managers, 1), PLUGIN_FACTORY_ADMIN_OWNER);
         assertEq(address(uint160(uint256(vm.load(PLUGIN_FACTORY, IMPL_SLOT)))), PLUGIN_FACTORY_IMPL);
         assertEq(PLUGIN_FACTORY_IMPL.codehash, PLUGIN_FACTORY_IMPL_CODEHASH);
         assertEq(address(uint160(uint256(vm.load(PLUGIN_FACTORY, ADMIN_SLOT)))), PLUGIN_FACTORY_ADMIN);
         assertEq(PLUGIN_FACTORY_ADMIN.codehash, PLUGIN_FACTORY_ADMIN_CODEHASH);
-        assertEq(IOwned(PLUGIN_FACTORY_ADMIN).owner(), ALGEBRA_FORMER_OWNER);
+        assertEq(IOwned(PLUGIN_FACTORY_ADMIN).owner(), PLUGIN_FACTORY_ADMIN_OWNER);
 
         address[] memory pools = fx.readAddressArray(".gasPools");
         address[] memory cores = fx.readAddressArray(".gasCores");
@@ -729,7 +729,7 @@ contract ForkTest is Test {
             IAlgebraPoolExtra(pool).setPlugin(stranger);
         }
         address plugin = IAlgebraPool(pool).plugin();
-        address[3] memory admins = [ALGEBRA_OWNER, ALGEBRA_ADMIN, ALGEBRA_FORMER_OWNER];
+        address[3] memory admins = [ALGEBRA_OWNER, ALGEBRA_ADMIN, PLUGIN_FACTORY_ADMIN_OWNER];
         for (uint256 i; i < admins.length; ++i) {
             vm.prank(admins[i]);
             IAlgebraPoolExtra(pool).setPlugin(stranger);
