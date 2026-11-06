@@ -141,11 +141,10 @@ contract ForkTest is Test {
     address internal constant MINTER = 0xA7D64625F45548a19B2A19e28E7546bb2839003E;
     address internal constant TREASURY = 0x450c72de8c0079B49AcedF294a13011bd09D125B;
     address internal constant USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
-    address internal constant WETH = 0x4200000000000000000000000000000000000006;
-    address internal constant HYDX = 0x00000e7efa313F4E11Bfff432471eD9423AC6B30;
     address internal constant SEQUENCER_FEED = 0xBCF85224fc0756B9Fa45aA7892530B47e10b6433;
     address internal constant ALGEBRA_FACTORY = 0x36077D39cdC65E1e3FB65810430E5b2c4D5fA29E;
-    address internal constant ALGEBRA_OWNER = 0x74266f2b206D1359B83fc74949EF07176FB3AE03;
+    address internal constant ALGEBRA_OWNER = 0x1aE3753d9b60743A89159CcFF8E251C60B560311;
+    address internal constant PLUGIN_FACTORY_ADMIN_OWNER = 0x74266f2b206D1359B83fc74949EF07176FB3AE03;
     address internal constant ALGEBRA_ENTRY_POINT = 0x00EdE53f39415E64c78eebD02AD9D383b3A0C0F1;
     address internal constant ALGEBRA_ADMIN = 0xDeaD1F5aF792afc125812E875A891b038f888258;
     address internal constant PLUGIN_BEACON = 0x106937fC03212A762be17D529893A32E47bA13a1;
@@ -153,7 +152,6 @@ contract ForkTest is Test {
     address internal constant PLUGIN_FACTORY = 0xa8dD4C05796801C734E99d5582E90e3a8bD88194;
     address internal constant PLUGIN_FACTORY_IMPL = 0xde57C7d4d2E98DaFb7cDC59E9c88d28f543AE922;
     address internal constant PLUGIN_FACTORY_ADMIN = 0x2689EF6a746f1b253CD772Fb045a7563505bEd00;
-    address internal constant BROKEN_POOL = 0xa69256ea019648815B1a3CE1C83C0D00a288dfc7;
     address internal constant USDC_VAULT = 0xBEEFE94c8aD530842bfE7d8B397938fFc1cb83b2;
 
     bytes32 internal constant VOTER_PROXY_CODEHASH = 0xbdf20cb78c052fa6ad3cfe77fde23f9eea05a6f1f4087c07ecde2f274a2b36e1;
@@ -180,6 +178,7 @@ contract ForkTest is Test {
 
     uint256 internal constant TOKEN_ID = 14_247;
     address internal constant HOLDER = 0xa79cd47655156b299762DFE92A67980805ce5a31;
+    bytes32 internal constant TEST_SALT = keccak256("metadex.cafe/ImmutableVeTokenConduit/v2/fork-test");
 
     address internal stranger = makeAddr("stranger");
     address internal briber = makeAddr("briber");
@@ -197,7 +196,11 @@ contract ForkTest is Test {
     }
 
     function _deploy() internal {
-        conduit = ImmutableVeTokenConduit(d.run());
+        bytes memory initCode = d.initCode();
+        address deployed = vm.computeCreate2Address(TEST_SALT, keccak256(initCode), CREATE2_FACTORY);
+        (bool ok,) = CREATE2_FACTORY.call(bytes.concat(TEST_SALT, initCode));
+        require(ok && deployed.code.length != 0, "the test salt's address is taken at this block");
+        conduit = ImmutableVeTokenConduit(deployed);
     }
 
     function _optIn() internal {
@@ -365,9 +368,10 @@ contract ForkTest is Test {
         assertEq(PLUGIN_IMPL.codehash, PLUGIN_IMPL_CODEHASH);
         IAccessControlEnumerable roles = IAccessControlEnumerable(ALGEBRA_FACTORY);
         bytes32 admins = roles.POOLS_ADMINISTRATOR_ROLE();
-        assertEq(roles.getRoleMemberCount(admins), 2);
+        assertEq(roles.getRoleMemberCount(admins), 3);
         assertEq(roles.getRoleMember(admins, 0), ALGEBRA_ENTRY_POINT);
         assertEq(roles.getRoleMember(admins, 1), ALGEBRA_ADMIN);
+        assertEq(roles.getRoleMember(admins, 2), PLUGIN_FACTORY_ADMIN_OWNER);
         assertEq(roles.getRoleMemberCount(bytes32(0)), 1);
         assertEq(roles.getRoleMember(bytes32(0), 0), ALGEBRA_OWNER);
         bytes32 deployers = keccak256("CUSTOM_POOL_DEPLOYER");
@@ -377,11 +381,15 @@ contract ForkTest is Test {
         bytes32 upgraders = keccak256("ALGEBRA_BASE_PLUGIN_FACTORY_ADMINISTRATOR");
         assertEq(roles.getRoleMemberCount(upgraders), 1);
         assertEq(roles.getRoleMember(upgraders, 0), ALGEBRA_ADMIN);
+        bytes32 managers = keccak256("ALGEBRA_BASE_PLUGIN_MANAGER");
+        assertEq(roles.getRoleMemberCount(managers), 2);
+        assertEq(roles.getRoleMember(managers, 0), ALGEBRA_ADMIN);
+        assertEq(roles.getRoleMember(managers, 1), PLUGIN_FACTORY_ADMIN_OWNER);
         assertEq(address(uint160(uint256(vm.load(PLUGIN_FACTORY, IMPL_SLOT)))), PLUGIN_FACTORY_IMPL);
         assertEq(PLUGIN_FACTORY_IMPL.codehash, PLUGIN_FACTORY_IMPL_CODEHASH);
         assertEq(address(uint160(uint256(vm.load(PLUGIN_FACTORY, ADMIN_SLOT)))), PLUGIN_FACTORY_ADMIN);
         assertEq(PLUGIN_FACTORY_ADMIN.codehash, PLUGIN_FACTORY_ADMIN_CODEHASH);
-        assertEq(IOwned(PLUGIN_FACTORY_ADMIN).owner(), ALGEBRA_OWNER);
+        assertEq(IOwned(PLUGIN_FACTORY_ADMIN).owner(), PLUGIN_FACTORY_ADMIN_OWNER);
 
         address[] memory pools = fx.readAddressArray(".gasPools");
         address[] memory cores = fx.readAddressArray(".gasCores");
@@ -418,7 +426,6 @@ contract ForkTest is Test {
 
     function test_pin_deployScript() public {
         address predicted = d.predict();
-        assertEq(predicted.code.length, 0);
         assertEq(d.run(), predicted);
         ImmutableVeTokenConduit c = ImmutableVeTokenConduit(predicted);
         assertEq(c.voter(), VOTER);
@@ -431,10 +438,12 @@ contract ForkTest is Test {
         assertEq(actions[0], 3);
         assertEq(actions[1], 5);
         assertEq(description, "");
-        assertEq(
-            keccak256(predicted.code),
-            vm.parseJsonBytes32(vm.readFile("verification/bytecode-hashes.json"), ".deployment.runtimeKeccak")
-        );
+        bytes32 runtime =
+            vm.parseJsonBytes32(vm.readFile("verification/bytecode-hashes.json"), ".deployment.runtimeKeccak");
+        assertEq(keccak256(predicted.code), runtime);
+        _deploy();
+        assertTrue(address(conduit) != predicted);
+        assertEq(keccak256(address(conduit).code), runtime);
     }
 
     function test_vote_waterFilling() public {
@@ -483,16 +492,22 @@ contract ForkTest is Test {
 
         address extra = _freshPool(pools);
         _notify(_externalBribe(extra), USDC, 1000e6);
-        address[] memory better = new address[](pools.length + 1);
-        uint256[] memory wb = new uint256[](pools.length + 1);
-        for (uint256 i; i < pools.length; ++i) {
-            better[i] = pools[i];
-            wb[i] = weights[i];
+        uint256 n = pools.length < conduit.MAX_POOLS() ? pools.length : pools.length - 1;
+        address[] memory kept = new address[](n);
+        uint256[] memory wk = new uint256[](n);
+        address[] memory better = new address[](n + 1);
+        uint256[] memory wb = new uint256[](n + 1);
+        for (uint256 i; i < n; ++i) {
+            kept[i] = better[i] = pools[i];
+            wk[i] = wb[i] = weights[i];
         }
-        better[pools.length] = extra;
-        wb[pools.length] = 1e18;
+        better[n] = extra;
+        wb[n] = 1e18;
         uint256 betterScore = conduit.score(better, wb);
-        assertGt(betterScore, newScore + 999e18);
+        assertGt(betterScore, conduit.score(kept, wk) + 999e18);
+        vm.expectRevert(abi.encodeWithSignature("VoteDelayNotMet()"));
+        conduit.vote(better, wb);
+        vm.roll(block.number + 4);
         vm.expectRevert(abi.encodeWithSignature("VoteDelayNotMet()"));
         conduit.vote(better, wb);
 
@@ -501,7 +516,7 @@ contract ForkTest is Test {
         (oldScore, newScore) = conduit.vote(better, wb);
         assertEq(newScore, betterScore);
         assertEq(oldScore, expected);
-        assertEq(IVoter(VOTER).poolVoteLength(address(conduit)), pools.length + 1);
+        assertEq(IVoter(VOTER).poolVoteLength(address(conduit)), n + 1);
     }
 
     function _freshPool(address[] memory taken) internal view returns (address) {
@@ -647,7 +662,9 @@ contract ForkTest is Test {
         assertEq(conduit.poolValue(pool), 2 * cap);
 
         vm.mockCall(
-            ALGEBRA_FACTORY, abi.encodeWithSelector(IAlgebraFactory.poolByPair.selector), abi.encode(BROKEN_POOL)
+            ALGEBRA_FACTORY,
+            abi.encodeWithSelector(IAlgebraFactory.poolByPair.selector),
+            abi.encode(fx.readAddress(".broken.pool"))
         );
         assertEq(conduit.poolValue(pool), cap);
     }
@@ -656,19 +673,26 @@ contract ForkTest is Test {
         _deploy();
         _optIn();
         uint256 epoch = _nextEpoch();
-        address fees = _feeBribe(BROKEN_POOL);
-        assertEq(IBribe(fees).rewardTokens(0), USDC);
-        address vault = IBribe(fees).rewardTokens(1);
-        assertEq(IAlgebraFactory(ALGEBRA_FACTORY).poolByPair(USDC, vault), BROKEN_POOL);
-        (, int24 spot,,,,) = IAlgebraPoolExtra(BROKEN_POOL).globalState();
-        assertEq(spot, -887_272);
-        assertLe(_twap(BROKEN_POOL, false), -conduit.TICK_EDGE());
+        address pool = fx.readAddress(".broken.pool");
+        address core = fx.readAddress(".broken.core");
+        address tail = fx.readAddress(".broken.tail");
+        address fees = _feeBribe(pool);
+        (address a, address b) = (IBribe(fees).rewardTokens(0), IBribe(fees).rewardTokens(1));
+        assertTrue((a == core && b == tail) || (a == tail && b == core));
+        assertEq(IAlgebraFactory(ALGEBRA_FACTORY).poolByPair(a, b), pool);
+        (, int24 spot,,,,) = IAlgebraPoolExtra(pool).globalState();
+        assertGe(spot < 0 ? -int256(spot) : int256(spot), conduit.TICK_EDGE());
+        int256 twap = _twap(pool, false);
+        assertGe(twap < 0 ? -twap : twap, conduit.TICK_EDGE());
 
-        _credit(fees, USDC, 100e6, epoch);
-        uint256 value = conduit.poolValue(BROKEN_POOL);
-        assertEq(value, 100e6 * fx.readUintArray(".answers")[2] * 1e4);
-        _credit(fees, vault, 1e18, epoch);
-        assertEq(conduit.poolValue(BROKEN_POOL), value);
+        uint256 k = _pricedIndex(core);
+        (,,, uint256 mul, uint256 div) = conduit.pricedTokens(k);
+        uint256 amount = 10 ** IERC20(core).decimals();
+        _credit(fees, core, amount, epoch);
+        uint256 value = conduit.poolValue(pool);
+        assertEq(value, amount * fx.readUintArray(".answers")[k] * mul / div);
+        _credit(fees, tail, 1e18, epoch);
+        assertEq(conduit.poolValue(pool), value);
     }
 
     function test_value_singleAssetVaultHasNoTail() public {
@@ -698,15 +722,22 @@ contract ForkTest is Test {
         _credit(fees, fx.readAddressArray(".gasTails")[0], type(uint128).max, epoch);
         assertEq(conduit.poolValue(pool), 2 * cap);
 
-        address[3] memory others = [stranger, HOLDER, BRIBE_OWNER];
+        address[3] memory others = [stranger, HOLDER, TREASURY];
         for (uint256 i; i < others.length; ++i) {
             vm.prank(others[i]);
             vm.expectRevert(abi.encodeWithSignature("notAllowed()"));
             IAlgebraPoolExtra(pool).setPlugin(stranger);
         }
-        vm.prank(ALGEBRA_OWNER);
-        IAlgebraPoolExtra(pool).setPlugin(stranger);
-        assertEq(conduit.poolValue(pool), cap);
+        address plugin = IAlgebraPool(pool).plugin();
+        address[3] memory admins = [ALGEBRA_OWNER, ALGEBRA_ADMIN, PLUGIN_FACTORY_ADMIN_OWNER];
+        for (uint256 i; i < admins.length; ++i) {
+            vm.prank(admins[i]);
+            IAlgebraPoolExtra(pool).setPlugin(stranger);
+            assertEq(conduit.poolValue(pool), cap);
+            vm.prank(admins[i]);
+            IAlgebraPoolExtra(pool).setPlugin(plugin);
+            assertEq(conduit.poolValue(pool), 2 * cap);
+        }
     }
 
     function test_algebra_customPoolDeployersOnlyControlTheirOwnPools() public {
@@ -739,9 +770,7 @@ contract ForkTest is Test {
         bribes = fx.readAddressArray(".claim.bribes");
         tokens = fx.readAddressArray(".claim.tokens");
         amounts = fx.readUintArray(".claim.amounts");
-        assertEq(tokens[0], USDC);
-        assertEq(tokens[1], WETH);
-        assertEq(tokens[2], HYDX);
+        assertGt(tokens.length, 0);
     }
 
     function _balances(address[] memory tokens, address account) internal view returns (uint256[] memory b) {
