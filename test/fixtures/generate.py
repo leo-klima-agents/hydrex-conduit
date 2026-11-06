@@ -3,6 +3,7 @@ import functools
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 import time
@@ -10,6 +11,10 @@ import urllib.request
 
 RPC = os.environ["BASE_RPC_URL"]
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fork.json")
+ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+ARTIFACT = os.path.join(ROOT, "out", "ImmutableVeTokenConduit.sol", "ImmutableVeTokenConduit.json")
+HASHES = os.path.join(ROOT, "verification", "bytecode-hashes.json")
+TEST_SALT_PREIMAGE = "metadex.cafe/ImmutableVeTokenConduit/v2/fork-test"
 
 VOTER = "0xc69E3eF39E3fFBcE2A1c570f8d3ADF76909ef17b"
 VE = "0x25B2ED7149fb8A05f6eF9407d9c8F878f59cd1e1"
@@ -165,13 +170,41 @@ def tails(block, epoch, live, intl, answers):
         True,
     )
     out = {}
+    edge = []
     for (k, pair, core, tail), state, plugin, twap in zip(candidates, states, plugins, twaps):
         tick = signed(state[1])
         if valid_twap(twap) and -TICK_EDGE < tick < TICK_EDGE:
             out[k] = (core, tail, tick if int(tail, 16) < int(PRICED[core][0], 16) else -tick, addr(plugin[0]))
+        elif valid_twap(twap):
+            edge.append((k, core, tail))
     amounts = calls(block, [(intl[k], "rewardData(address,uint256)", [t, epoch]) for k, (_, t, _, _) in out.items()])
     gas = twap_gas(block, [p for _, _, _, p in out.values()])
-    return {k: (core, tail, tick, a[1], g) for (k, (core, tail, tick, _)), a, g in zip(out.items(), amounts, gas)}
+    priced = {k: (core, tail, tick, a[1], g) for (k, (core, tail, tick, _)), a, g in zip(out.items(), amounts, gas)}
+    return priced, edge
+
+
+def require_free_test_address(block):
+    if not os.path.exists(ARTIFACT):
+        sys.exit("run forge build first: the fork tests' conduit address depends on the build")
+    creation = json.load(open(ARTIFACT))["bytecode"]["object"]
+    hashes = json.load(open(HASHES))
+    salt = subprocess.check_output(["cast", "keccak", TEST_SALT_PREIMAGE], text=True).strip()
+    out = subprocess.check_output(
+        [
+            "cast",
+            "create2",
+            "--deployer",
+            hashes["create2Deployer"],
+            "--salt",
+            salt,
+            "--init-code",
+            creation + hashes["deployment"]["constructorArgs"][2:],
+        ],
+        text=True,
+    )
+    address = re.search(r"0x[0-9a-fA-F]{40}", out).group(0)
+    if rpc([("eth_getCode", [address, hex(block)])])[0] != "0x":
+        sys.exit(f"{address}, where test/Fork.t.sol deploys its conduit, already has code at block {block}")
 
 
 def share(b, v, x):
@@ -191,6 +224,7 @@ def waterfill(values, others, power):
 def main():
     latest = int(rpc([("eth_blockNumber", [])])[0], 16)
     block = int(sys.argv[1]) if len(sys.argv) > 1 else latest - 2
+    require_free_test_address(block)
 
     (klima_n,) = calls(block, [(VOTER, "poolVoteLength(address)", [KLIMA_CONDUIT])])[0]
     kpools = [
@@ -200,11 +234,13 @@ def main():
     kg = [addr(r[0]) for r in calls(block, [(VOTER, "gauges(address)", [p]) for p in kpools])]
     kext = [addr(r[0]) for r in calls(block, [(VOTER, "external_bribes(address)", [g]) for g in kg])]
     kint = [addr(r[0]) for r in calls(block, [(VOTER, "internal_bribes(address)", [g]) for g in kg])]
-    tokens = [USDC, WETH, HYDX]
     e = {
         t: [r[0] for r in calls(block, [(b, "earned(uint256,address)", [TOKEN_ID, t]) for b in kext + kint])]
-        for t in tokens
+        for t in (USDC, WETH, HYDX)
     }
+    tokens = [t for t in e if sum(e[t]) > 100]
+    if not tokens:
+        sys.exit(f"token {TOKEN_ID} has nothing to claim at block {block}")
     claim = {
         "bribes": [b for i, b in enumerate(kext) if any(e[t][i] for t in tokens)],
         "fees": [b for i, b in enumerate(kint) if any(e[t][len(kext) + i] for t in tokens)],
@@ -240,7 +276,9 @@ def main():
             fee_values[k] += x * a * mul // div
         if x:
             deposits[k].append((b, t, x))
-    eligible = tails(block, epoch, live, intl, answers)
+    eligible, edge = tails(block, epoch, live, intl, answers)
+    if not edge:
+        sys.exit(f"no gauged pool's price is past TICK_EDGE at block {block}")
     for k, (core, tail, tick, x, _) in eligible.items():
         if fee_values[k] and x:
             _, _, mul, div = PRICED[core]
@@ -286,6 +324,7 @@ def main():
         "gasPools": [live[k][0] for k in gas],
         "gasCores": [PRICED[eligible[k][0]][0] for k in gas],
         "gasTails": [eligible[k][1] for k in gas],
+        "broken": {"pool": live[edge[0][0]][0], "core": PRICED[edge[0][1]][0], "tail": edge[0][2]},
         "claim": claim,
     }
     with open(OUT, "w") as f:

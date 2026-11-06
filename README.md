@@ -139,9 +139,11 @@ address: it makes the whole claim revert.
   That is cheap in a thin pool, and free for whoever controls a token's supply. The cap limits the damage: what
   delegators receive from a pool is always at least half of what the conduit counts for it. Until someone proposes
   again, a pushed-down price can let a worse proposal win, and a pushed-up price can keep a worse vote in force.
-- Algebra's factory owner, `0x74266f2b206D1359B83fc74949EF07176FB3AE03`, and its administrator,
-  `0xDeaD1F5aF792afc125812E875A891b038f888258`, can replace a pool's plugin, change its configuration, or upgrade
-  the upgradeable plugins, and the owner can give those rights to others. A broken or hostile plugin can make a pool's
+- Three addresses can replace an Algebra pool's plugin or change its configuration: Algebra's factory owner,
+  `0x1aE3753d9b60743A89159CcFF8E251C60B560311`, the same address as the bribes' owner since 2026-10-29, and its pool
+  administrators `0xDeaD1F5aF792afc125812E875A891b038f888258` and `0x74266f2b206D1359B83fc74949EF07176FB3AE03`, the
+  owner until then. The first two can also upgrade the upgradeable plugins, and the third can upgrade the plugin
+  factory that does so. The owner can give these rights to others. A broken or hostile plugin can make a pool's
   other-token fees count up to the cap, or not at all, but it gets at most `TWAP_GAS` per call, so it can't make a
   vote too expensive to send. Anyone can replace the plugin of an Algebra custom pool they create, so only a pair's
   base pool counts.
