@@ -187,8 +187,8 @@ commit `c83a8d1`.
 
 Deployment steps:
 
-1. Install Foundry v1.8.5, the version CI uses, with `foundryup --install v1.8.5`. Another version can compile
-   different bytecode.
+1. Install Foundry v1.9.0, the version CI uses, with `foundryup --install v1.9.0`. It compiles the same bytecode as
+   v1.8.5, which built the deployed contract. Another version can compile different bytecode.
 2. Run `forge test` with `BASE_RPC_URL` set, then `script/check-verification.sh`.
 3. Do a dry run with `forge script script/Deploy.s.sol --rpc-url $BASE_RPC_URL`, and check that it logs the address
    in the table above.
@@ -218,7 +218,8 @@ You need [Foundry](https://getfoundry.sh). The fork tests and some scripts also 
 
 - `forge test` runs the unit tests, and the fork tests too when `BASE_RPC_URL` is set. The fork tests run against
   Base at the block recorded in [`test/fixtures/fork.json`](test/fixtures/fork.json).
-- `test/fixtures/generate.py [block]` rewrites that fixture.
+- `test/fixtures/generate.py [block]` rewrites that fixture. Run `forge build` first: it reads the build to find
+  where the fork tests deploy their conduit.
 - `script/check-signatures.sh` checks the interfaces in `src/interfaces/` against the Hydrex and Algebra sources
   vendored in `test/upstream/`.
 - `script/check-verification.sh` checks that `verification/` matches the build.
