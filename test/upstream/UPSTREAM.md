@@ -119,9 +119,11 @@ files are in the sources on Sourcify of the contract named in the implementation
    delegated during an epoch count only from the next one. Each pool gets
    `_voteProportions[i] * _weight / _totalVoteProportions` (line 712), where the total counts only live gauges
    (line 704), and a dead gauge is skipped (line 711).
-3. **One vote per block.** `VOTE_DELAY` is set to 0 (`VoterV5.sol` line 174; the fork test reads it) and is enforced
+3. **One vote per second.** `VOTE_DELAY` is set to 0 (`VoterV5.sol` line 174; the fork test reads it) and is enforced
    with `currentTime > lastVoted[_voter] + VOTE_DELAY` (line 748), and `vote` sets `lastVoted` to `block.timestamp`
-   (line 691). A voter votes or resets at most once per block.
+   (line 691). A voter votes or resets at most once per `block.timestamp`, so once per second; since Denim that is once
+   every five blocks, not once per block (fact 15). The fork test checks that a later block in the same second rejects
+   a second vote.
 4. **Votes reset first.** `_vote` calls `_reset` (`VoterV5.sol` line 695), which loops over every pool of the
    previous vote and withdraws from both of its bribes (lines 635-666). The cost of a vote grows with the size of the
    one it replaces. Last epoch's `votes` stay in storage until then, but only this epoch's are in `weights`
@@ -166,14 +168,16 @@ files are in the sources on Sourcify of the contract named in the implementation
     (`VoterV5_GaugeLogic` lines 205-213), and needs Hydrex's pool eligibility oracle unless a gauge admin creates it
     (lines 236-249).
 12. **Timepoints.** Both plugins write a timepoint from the pool's current tick in `beforeSwap`, at most once per
-    block ([`HydrexBasePlugin.sol`](https://repo.sourcify.dev/8453/0x58d766bfBD60a02425E706596A0111E05Fd6092D) line 88 and
+    `block.timestamp` ([`HydrexBasePlugin.sol`](https://repo.sourcify.dev/8453/0x58d766bfBD60a02425E706596A0111E05Fd6092D) line 88 and
     `VolatilityOraclePlugin.sol` lines 85-94; [`AlgebraUpgradeablePlugin.sol`](https://repo.sourcify.dev/8453/0xAF11628e68e8bD45375560E549Ab8411FA034D4F)
     line 196 and `VolatilityOraclePluginImplementation.sol` lines 27-31). The pool calls `beforeSwap` before it
     computes either kind of swap ([`AlgebraPool.sol`](https://repo.sourcify.dev/8453/0xB3f0828eB3375B609b49E9Fb959472a29cD6E49a) lines 250,
     332 and 391-401), unless the plugin itself is swapping or the pool's plugin config clears the before-swap flag.
     `getTimepoints` extrapolates past the last timepoint with the pool's current tick (`VolatilityOracle.sol` line
-    119). So a window that ends at the current block contains no tick set in it: the block's first swap records the
-    tick from before it, and until then the pool's current tick is the one the previous block left.
+    119). So a window that ends at the current timestamp contains no tick set at that timestamp: the first swap in that
+    second records the tick from before it, and until then the pool's current tick is the one left before that second,
+    whichever of the second's blocks reads it. Accumulators are weighted by seconds, so 200 ms blocks don't change the
+    average (fact 15).
 13. **Plugin administration.** Only the Algebra factory's owner or a pool administrator can replace a pool's plugin
     (`AlgebraPool.sol` lines 472-474 and 497-501). They and the plugin itself can change its plugin config (lines
     504-511). Neither plugin's code clears the before-swap flag: each only resets its default config, which has it, or
@@ -196,6 +200,14 @@ files are in the sources on Sourcify of the contract named in the implementation
     base pool, and that a replaced plugin only stops the tail from counting.
 14. **Storage.** `rewardData` is at slot 53 of a bribe's storage. `test/Fork.t.sol` writes it to replay deposits of
     tokens it can't mint, and checks the slot against a real deposit.
+15. **Base's clock.** Since Base's Denim upgrade, at block 53,556,127 (2026-11-05 18:00:01 UTC), Base makes a block
+    every 200 ms instead of every 2 s, with no skipped slots, and `block.timestamp` still counts whole seconds, so five
+    consecutive blocks share it ([Denim specification](https://docs.base.org/upgrades/denim/200ms-blocks)). The new
+    `timestampMs` field in RPC headers and the BaseTime predeploy at `0x4200000000000000000000000000000000000030` carry
+    the milliseconds; the conduit uses neither. Everything it times uses `block.timestamp`: epochs, Chainlink price
+    ages, the sequencer's grace hour, the TWAP window, and the Voter's vote delay (fact 3). Only `lastClaimBlock`
+    reads `block.number`, and only to mark where a claim's logs are. Blocks now hold 40M gas, more than the
+    16,777,216-gas transaction cap a vote stays within.
 
 ## Selectors
 

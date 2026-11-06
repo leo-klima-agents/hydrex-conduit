@@ -60,7 +60,8 @@ base pool, the conduit also counts the other token's fees, up to the value of th
 An internal bribe therefore counts at most twice its whitelisted fees. External bribes count only whitelisted tokens.
 
 The conduit prices the other token at the pool's average price over the last 30 minutes, read from the pool's plugin,
-and converts it with the whitelisted token's Chainlink price. Trades in the vote's own block don't move that average.
+and converts it with the whitelisted token's Chainlink price. Trades in the vote's own second, in its block or an
+earlier one, don't move that average.
 The other token counts as zero if the plugin's answer is malformed or takes more than 120,000 gas (`TWAP_GAS`), or if
 the average is too extreme to be a real price (`TICK_EDGE`), as it is in a pool stuck at the end of its range.
 
@@ -106,8 +107,11 @@ conduit first.
 [Trust and limitations](#trust-and-limitations). Like `vote`, they revert with `EpochStale` until someone calls
 `update_period()` on the Hydrex minter at the start of an epoch, with `NoVotingPower` if the conduit had no delegated
 votes when the epoch started, and with `SequencerDown` while the sequencer is down or in the hour after it comes back.
-The Voter accepts one vote per block. Replacing a vote of 20 pools with 20 others costs up to about 13M gas, and never
-more than about 15.8M whatever the pools' plugins do, within Base's limit of 16,777,216 gas per transaction.
+The Voter accepts one vote per second, not per block: it compares `block.timestamp`, which counts whole seconds, and
+since its Denim upgrade (block 53,556,127, 2026-11-05) Base makes a block every 200 ms, so five blocks share each
+second. A second vote in the same second reverts with `VoteDelayNotMet()`, whichever block it lands in, so time votes
+by `block.timestamp`, not by counting blocks. Replacing a vote of 20 pools with 20 others costs up to about 13M gas,
+and never more than about 15.8M whatever the pools' plugins do, within Base's limit of 16,777,216 gas per transaction.
 
 ### Claiming rewards
 
@@ -146,7 +150,7 @@ address: it makes the whole claim revert.
   another, and `score`, `currentScore` and `poolValue` can then disagree with `vote`. The heaviest plugin on Base needs
   about 104,000 gas.
 - Scores use other voters' current votes. If they change theirs later, the vote in force may no longer be the best,
-  and anyone can propose a better one. A vote accepted in an epoch's last block can't be replaced.
+  and anyone can propose a better one. A vote accepted in an epoch's last second can't be replaced.
 - A token that charges a fee on transfers is charged twice on its way through the conduit.
 - Tokens sent to the conduit by mistake are stuck there.
 - The Voter calls whatever fee and bribe contracts a claim lists, so anyone can claim dust through a contract of their

@@ -495,6 +495,9 @@ contract ForkTest is Test {
         assertGt(betterScore, newScore + 999e18);
         vm.expectRevert(abi.encodeWithSignature("VoteDelayNotMet()"));
         conduit.vote(better, wb);
+        vm.roll(block.number + 4);
+        vm.expectRevert(abi.encodeWithSignature("VoteDelayNotMet()"));
+        conduit.vote(better, wb);
 
         _next();
         vm.prank(stranger);
