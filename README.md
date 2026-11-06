@@ -60,7 +60,7 @@ base pool, the conduit also counts the other token's fees, up to the value of th
 An internal bribe therefore counts at most twice its whitelisted fees. External bribes count only whitelisted tokens.
 
 The conduit prices the other token at the pool's average price over the last 30 minutes, read from the pool's plugin,
-and converts it with the whitelisted token's Chainlink price. Trades in the vote's own block don't move that average.
+and converts it with the whitelisted token's Chainlink price. Trades in the vote's own second don't move that average.
 The other token counts as zero if the plugin's answer is malformed or takes more than 120,000 gas (`TWAP_GAS`), or if
 the average is too extreme to be a real price (`TICK_EDGE`), as it is in a pool stuck at the end of its range.
 
@@ -106,7 +106,7 @@ conduit first.
 [Trust and limitations](#trust-and-limitations). Like `vote`, they revert with `EpochStale` until someone calls
 `update_period()` on the Hydrex minter at the start of an epoch, with `NoVotingPower` if the conduit had no delegated
 votes when the epoch started, and with `SequencerDown` while the sequencer is down or in the hour after it comes back.
-The Voter accepts one vote per block. Replacing a vote of 20 pools with 20 others costs up to about 13M gas, and never
+The Voter accepts one vote per second. Replacing a vote of 20 pools with 20 others costs up to about 13M gas, and never
 more than about 15.8M whatever the pools' plugins do, within Base's limit of 16,777,216 gas per transaction.
 
 ### Claiming rewards
@@ -135,9 +135,11 @@ address: it makes the whole claim revert.
   That is cheap in a thin pool, and free for whoever controls a token's supply. The cap limits the damage: what
   delegators receive from a pool is always at least half of what the conduit counts for it. Until someone proposes
   again, a pushed-down price can let a worse proposal win, and a pushed-up price can keep a worse vote in force.
-- Algebra's factory owner, `0x74266f2b206D1359B83fc74949EF07176FB3AE03`, and its administrator,
-  `0xDeaD1F5aF792afc125812E875A891b038f888258`, can replace a pool's plugin, change its configuration, or upgrade
-  the upgradeable plugins, and the owner can give those rights to others. A broken or hostile plugin can make a pool's
+- Three addresses can replace an Algebra pool's plugin or change its configuration: Algebra's factory owner,
+  `0x1aE3753d9b60743A89159CcFF8E251C60B560311`, which is also the bribes' owner, and its pool administrators
+  `0xDeaD1F5aF792afc125812E875A891b038f888258` and `0x74266f2b206D1359B83fc74949EF07176FB3AE03`. The first two can
+  also upgrade the upgradeable plugins, and the third can upgrade the plugin factory that does so. The owner can give
+  these rights to others. A broken or hostile plugin can make a pool's
   other-token fees count up to the cap, or not at all, but it gets at most `TWAP_GAS` per call, so it can't make a
   vote too expensive to send. Anyone can replace the plugin of an Algebra custom pool they create, so only a pair's
   base pool counts.
@@ -146,7 +148,7 @@ address: it makes the whole claim revert.
   another, and `score`, `currentScore` and `poolValue` can then disagree with `vote`. The heaviest plugin on Base needs
   about 104,000 gas.
 - Scores use other voters' current votes. If they change theirs later, the vote in force may no longer be the best,
-  and anyone can propose a better one. A vote accepted in an epoch's last block can't be replaced.
+  and anyone can propose a better one. A vote accepted in an epoch's last second can't be replaced.
 - A token that charges a fee on transfers is charged twice on its way through the conduit.
 - Tokens sent to the conduit by mistake are stuck there.
 - The Voter calls whatever fee and bribe contracts a claim lists, so anyone can claim dust through a contract of their
@@ -181,7 +183,7 @@ commit `c83a8d1`.
 
 Deployment steps:
 
-1. Install Foundry v1.8.5, the version CI uses, with `foundryup --install v1.8.5`. Another version can compile
+1. Install Foundry v1.9.0, the version CI uses, with `foundryup --install v1.9.0`. Another version can compile
    different bytecode.
 2. Run `forge test` with `BASE_RPC_URL` set, then `script/check-verification.sh`.
 3. Do a dry run with `forge script script/Deploy.s.sol --rpc-url $BASE_RPC_URL`, and check that it logs the address
@@ -212,7 +214,8 @@ You need [Foundry](https://getfoundry.sh). The fork tests and some scripts also 
 
 - `forge test` runs the unit tests, and the fork tests too when `BASE_RPC_URL` is set. The fork tests run against
   Base at the block recorded in [`test/fixtures/fork.json`](test/fixtures/fork.json).
-- `test/fixtures/generate.py [block]` rewrites that fixture.
+- `test/fixtures/generate.py [block]` rewrites that fixture. Run `forge build` first: it reads the build to find
+  where the fork tests deploy their conduit.
 - `script/check-signatures.sh` checks the interfaces in `src/interfaces/` against the Hydrex and Algebra sources
   vendored in `test/upstream/`.
 - `script/check-verification.sh` checks that `verification/` matches the build.

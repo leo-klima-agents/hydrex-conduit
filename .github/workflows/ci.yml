@@ -10,7 +10,7 @@ permissions:
 
 env:
   FOUNDRY_PROFILE: ci
-  FOUNDRY_VERSION: v1.8.5
+  FOUNDRY_VERSION: v1.9.0
 
 jobs:
   check:
@@ -21,7 +21,7 @@ jobs:
         with:
           submodules: recursive
           persist-credentials: false
-      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+      - uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
         with:
           version: ${{ env.FOUNDRY_VERSION }}
       - run: forge fmt --check
@@ -47,7 +47,7 @@ jobs:
           persist-credentials: false
       - if: env.BASE_RPC_URL == ''
         run: echo "::notice::BASE_RPC_URL secret not set; fork tests run locally only"
-      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+      - uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
         if: env.BASE_RPC_URL != ''
         with:
           version: ${{ env.FOUNDRY_VERSION }}
@@ -82,7 +82,7 @@ jobs:
         with:
           submodules: recursive
           persist-credentials: false
-      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+      - uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
         with:
           version: ${{ env.FOUNDRY_VERSION }}
       - name: two clean builds are identical

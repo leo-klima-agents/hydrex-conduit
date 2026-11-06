@@ -34,8 +34,8 @@ them and `foundry.toml` skips them. `script/check-signatures.sh` checks that eve
 
 Sourcify has the VotingEscrow implementation and the Algebra contracts as a "match", not an "exact match": the bytecode
 matches but the metadata hash differs, so comments in their sources may differ from what was compiled. Every gauged
-Algebra pool runs the same pool code, with either its own `HydrexBasePlugin` (227 of the 238 gauged Algebra pools at
-block 52,832,165) or a proxy to the upgradeable plugin implementation (the other 11). The vendored files are fetched
+Algebra pool runs the same pool code, with either its own `HydrexBasePlugin` (235 of the 246 gauged Algebra pools at
+block 53,832,246) or a proxy to the upgradeable plugin implementation (the other 11). The vendored files are fetched
 from Sourcify with the commands below, and `SHA256SUMS` holds their hashes:
 
 ```
@@ -63,7 +63,7 @@ jq -j '.sources["@cryptoalgebra/volatility-oracle-plugin/contracts/interfaces/IV
 
 ## Addresses
 
-`test/Fork.t.sol` checks each of these at block 52,817,047 (2026-10-19).
+`test/Fork.t.sol` checks each of these at block 53,832,246 (2026-11-06).
 
 | Contract | Address | Code hash |
 |---|---|---|
@@ -75,19 +75,19 @@ jq -j '.sources["@cryptoalgebra/volatility-oracle-plugin/contracts/interfaces/IV
 | VotingEscrow approval logic (`approvalLogic()`) | `0x4B0BC0889EB524Dbae36d409fF733851E9B4f63D` | `0xd1fab3adcd045439b72359a675665cb9f9267b32aebb140df865fc723681a930` |
 | Bribe beacon | `0x5aeb9f88b66cd94f0ce50d139f9fc257b65411c2` | `0xaaa27093ce9a3136b77cbcbfbee1c26a564b1d2742bc57f916f1cafe5e41f956` |
 | Bribe implementation (`implementation()`) | `0x6225a2b81f83a71c0595449a224fc2385dfaa28d` | `0x419b9ff2bbe35af4ba4fb135c4f4a2cc215e0c212196d0b0d5dbf7bb6f301055` |
-| Bribe owner and bribe factory owner | `0x1aE3753d9b60743A89159CcFF8E251C60B560311` | |
+| Bribe owner, bribe factory owner, and Algebra factory owner and its only default admin | `0x1aE3753d9b60743A89159CcFF8E251C60B560311` | |
 | Minter proxy | `0xA7D64625F45548a19B2A19e28E7546bb2839003E` | |
 | `TREASURY`, a Safe 1.5.0 proxy (2 of 3) | `0x450c72de8c0079B49AcedF294a13011bd09D125B` | `0x4e381985ca68b3e5d27b4425fa581c19cf33146d3f887a3cfca96f55528ea46f` |
 | Algebra factory | `0x36077D39cdC65E1e3FB65810430E5b2c4D5fA29E` | `0x6f54720c3eb4326e8cf846308b98ab0c0d070a441ca11ba8cd00be0256af7084` |
-| Algebra factory owner, and its only default admin | `0x74266f2b206D1359B83fc74949EF07176FB3AE03` | |
+| Algebra pool administrator and base plugin manager (`POOLS_ADMINISTRATOR_ROLE`, `ALGEBRA_BASE_PLUGIN_MANAGER`), and owner of the plugin factory proxy admin | `0x74266f2b206D1359B83fc74949EF07176FB3AE03` | |
 | Algebra custom-pool entry point, a pool administrator and the only `CUSTOM_POOL_DEPLOYER` | `0x00EdE53f39415E64c78eebD02AD9D383b3A0C0F1` | `0x200c23737ade01ef361202814d1fb721b9dc811cf5f4345875c99770384ec3b2` |
-| Algebra pool and plugin factory administrator (`POOLS_ADMINISTRATOR_ROLE`, `ALGEBRA_BASE_PLUGIN_FACTORY_ADMINISTRATOR`), an EIP-7702 account | `0xDeaD1F5aF792afc125812E875A891b038f888258` | |
+| Algebra pool and plugin factory administrator and base plugin manager (`POOLS_ADMINISTRATOR_ROLE`, `ALGEBRA_BASE_PLUGIN_FACTORY_ADMINISTRATOR`, `ALGEBRA_BASE_PLUGIN_MANAGER`), an EIP-7702 account | `0xDeaD1F5aF792afc125812E875A891b038f888258` | |
 | Upgradeable plugin beacon | `0x106937fC03212A762be17D529893A32E47bA13a1` | `0x2105a3ca212415ea232cb45c3d9a073ea881378afadc776198c59f79d018f97e` |
 | Upgradeable plugin implementation (`implementation()`) | `0xAF11628e68e8bD45375560E549Ab8411FA034D4F` | `0x51aab6d45348f1b652884dcf8e4eaf06c54de68760f64f8487c5d670fc3488e4` |
 | Upgradeable plugin beacon owner, a plugin factory proxy | `0xa8dD4C05796801C734E99d5582E90e3a8bD88194` | |
 | Plugin factory implementation (ERC-1967 slot) | `0xde57C7d4d2E98DaFb7cDC59E9c88d28f543AE922` | `0xdda4b448b3ffa656fa5fdf88c424df94489a500023f889669e8632767edba9e5` |
-| Plugin factory proxy admin (ERC-1967 slot), owned by the Algebra factory owner | `0x2689EF6a746f1b253CD772Fb045a7563505bEd00` | `0x8b4085015bf2b807a59b2290edcd3886b049469b05572e4b9e1b7fc0e430d9c9` |
-| USDC/VAULT, an Algebra pool priced at the end of the tick range | `0xa69256ea019648815B1a3CE1C83C0D00a288dfc7` | |
+| Plugin factory proxy admin (ERC-1967 slot), owned by `0x74266f2b206D1359B83fc74949EF07176FB3AE03` | `0x2689EF6a746f1b253CD772Fb045a7563505bEd00` | `0x8b4085015bf2b807a59b2290edcd3886b049469b05572e4b9e1b7fc0e430d9c9` |
+| WETH/EDEL, an Algebra pool priced at the end of the tick range (`broken.pool` in the fixture, which the generator picks) | `0x6177a7FA0fb7D2620fe1743421768facABd6F905` | |
 | A USDC ERC-4626 vault's gauged pool | `0xBEEFE94c8aD530842bfE7d8B397938fFc1cb83b2` | |
 
 ## Chainlink feeds
@@ -95,7 +95,7 @@ jq -j '.sources["@cryptoalgebra/volatility-oracle-plugin/contracts/interfaces/IV
 Checked against Chainlink's Base directory
 ([feeds-ethereum-mainnet-base-1.json](https://reference-data-directory.vercel.app/feeds-ethereum-mainnet-base-1.json),
 the data behind [docs.chain.link](https://docs.chain.link/data-feeds/price-feeds/addresses?network=base)) on
-2026-10-19. Every price feed is in the "low" risk category, and each returned a fresh round that day.
+2026-11-06. Every price feed is in the "low" risk category, and each returned a fresh round that day.
 `test/Fork.t.sol` checks the description and decimals on chain.
 
 | Token | Feed | Description | Decimals | Heartbeat | Deviation | Maximum age |
@@ -119,9 +119,10 @@ files are in the sources on Sourcify of the contract named in the implementation
    delegated during an epoch count only from the next one. Each pool gets
    `_voteProportions[i] * _weight / _totalVoteProportions` (line 712), where the total counts only live gauges
    (line 704), and a dead gauge is skipped (line 711).
-3. **One vote per block.** `VOTE_DELAY` is set to 0 (`VoterV5.sol` line 174; the fork test reads it) and is enforced
+3. **One vote per second.** `VOTE_DELAY` is set to 0 (`VoterV5.sol` line 174; the fork test reads it) and is enforced
    with `currentTime > lastVoted[_voter] + VOTE_DELAY` (line 748), and `vote` sets `lastVoted` to `block.timestamp`
-   (line 691). A voter votes or resets at most once per block.
+   (line 691). A voter votes or resets at most once per `block.timestamp`, so once per second, which spans five blocks
+   (fact 15). The fork test checks that a later block in the same second rejects a second vote.
 4. **Votes reset first.** `_vote` calls `_reset` (`VoterV5.sol` line 695), which loops over every pool of the
    previous vote and withdraws from both of its bribes (lines 635-666). The cost of a vote grows with the size of the
    one it replaces. Last epoch's `votes` stay in storage until then, but only this epoch's are in `weights`
@@ -155,8 +156,8 @@ files are in the sources on Sourcify of the contract named in the implementation
    the owner.
 10. **A fee bribe's pair.** Gauge creation passes the pool's two tokens to the bribe factory for both bribes
     ([`VoterV5_GaugeLogic`](https://repo.sourcify.dev/8453/0x8CF73Eb543c75bA5f2e188D3ce5F8682f2E7f0A3) lines 311 and 318). On chain,
-    `rewardTokens(0)` and `rewardTokens(1)` of 416 of the 419 pair gauges' fee bribes are the pool's `token0` and
-    `token1` (at block 52,832,165; the other three are Uniswap v4 pools of native ETH), and a bribe only appends to
+    `rewardTokens(0)` and `rewardTokens(1)` of 424 of the 427 pair gauges' fee bribes are the pool's `token0` and
+    `token1` (at block 53,832,246; the other three are Uniswap v4 pools of native ETH), and a bribe only appends to
     its list ([`BribeV2.sol`](hydrex/bribe/BribeV2.sol#L382-L399)). A single-asset vault gauge's fee bribe lists its
     asset, then another reward token. The conduit doesn't rely on this: it counts a tail only when the two tokens'
     base pool is the gauge's pool.
@@ -166,14 +167,15 @@ files are in the sources on Sourcify of the contract named in the implementation
     (`VoterV5_GaugeLogic` lines 205-213), and needs Hydrex's pool eligibility oracle unless a gauge admin creates it
     (lines 236-249).
 12. **Timepoints.** Both plugins write a timepoint from the pool's current tick in `beforeSwap`, at most once per
-    block ([`HydrexBasePlugin.sol`](https://repo.sourcify.dev/8453/0x58d766bfBD60a02425E706596A0111E05Fd6092D) line 88 and
+    `block.timestamp` ([`HydrexBasePlugin.sol`](https://repo.sourcify.dev/8453/0x58d766bfBD60a02425E706596A0111E05Fd6092D) line 88 and
     `VolatilityOraclePlugin.sol` lines 85-94; [`AlgebraUpgradeablePlugin.sol`](https://repo.sourcify.dev/8453/0xAF11628e68e8bD45375560E549Ab8411FA034D4F)
     line 196 and `VolatilityOraclePluginImplementation.sol` lines 27-31). The pool calls `beforeSwap` before it
     computes either kind of swap ([`AlgebraPool.sol`](https://repo.sourcify.dev/8453/0xB3f0828eB3375B609b49E9Fb959472a29cD6E49a) lines 250,
     332 and 391-401), unless the plugin itself is swapping or the pool's plugin config clears the before-swap flag.
     `getTimepoints` extrapolates past the last timepoint with the pool's current tick (`VolatilityOracle.sol` line
-    119). So a window that ends at the current block contains no tick set in it: the block's first swap records the
-    tick from before it, and until then the pool's current tick is the one the previous block left.
+    119). So a window that ends at the current timestamp contains no tick set at that timestamp: the first swap in that
+    second records the tick from before it, and until then the pool's current tick is the one left before that second,
+    whichever of the second's blocks reads it.
 13. **Plugin administration.** Only the Algebra factory's owner or a pool administrator can replace a pool's plugin
     (`AlgebraPool.sol` lines 472-474 and 497-501). They and the plugin itself can change its plugin config (lines
     504-511). Neither plugin's code clears the before-swap flag: each only resets its default config, which has it, or
@@ -189,13 +191,23 @@ files are in the sources on Sourcify of the contract named in the implementation
     point can't act on a pool the conduit counts. The upgradeable plugins follow a beacon owned by a plugin factory,
     which upgrades it for the Algebra factory's owner and holders of its `ALGEBRA_BASE_PLUGIN_FACTORY_ADMINISTRATOR`
     role ([`AlgebraUpgradeablePluginFactory.sol`](https://repo.sourcify.dev/8453/0xde57C7d4d2E98DaFb7cDC59E9c88d28f543AE922)
-    lines 56-60 and 242-244). The plugin factory is itself a proxy, administered by a proxy admin that the Algebra
-    factory's owner owns. The upgradeable plugins delegate their oracle to a separate implementation
-    (`VolatilityOracleConnector.sol` line 41). `test/Fork.t.sol` pins the factory's roles and the plugin factory's
-    administration, and checks that a stranger can't replace a plugin, that a custom pool's deployer can't touch a
-    base pool, and that a replaced plugin only stops the tail from counting.
+    lines 56-60 and 242-244) through the factory's `hasRoleOrOwner`. The plugin factory is itself a proxy, administered
+    by a proxy admin owned by `0x74266f2b206D1359B83fc74949EF07176FB3AE03`. The plugins themselves act for their
+    factory, the Algebra factory's owner and holders of `ALGEBRA_BASE_PLUGIN_MANAGER` (`AlgebraBasePlugin.sol` line 16,
+    `UpgradeableAbstractPlugin.sol` line 66), within the config changes above. The upgradeable plugins delegate their
+    oracle to a separate implementation (`VolatilityOracleConnector.sol` line 41). `test/Fork.t.sol` pins the
+    factory's roles and the plugin factory's administration, and checks that a stranger can't replace a plugin while
+    the owner and both administrators can, that a custom pool's deployer can't touch a base pool, and that a replaced
+    plugin only stops the tail from counting.
 14. **Storage.** `rewardData` is at slot 53 of a bribe's storage. `test/Fork.t.sol` writes it to replay deposits of
     tokens it can't mint, and checks the slot against a real deposit.
+15. **Base's clock.** Base makes a block every 200 ms, with no skipped slots, and `block.timestamp` counts whole
+    seconds, so five consecutive blocks share it
+    ([specification](https://docs.base.org/upgrades/denim/200ms-blocks)). The `timestampMs` field in RPC headers and
+    the BaseTime predeploy at `0x4200000000000000000000000000000000000030` carry the milliseconds; the conduit uses
+    neither. Everything it times uses `block.timestamp`: epochs, Chainlink price ages, the sequencer's grace hour, the
+    TWAP window, and the Voter's vote delay (fact 3). Only `lastClaimBlock` reads `block.number`, and only to mark
+    where a claim's logs are. Blocks hold 40M gas, more than the 16,777,216-gas transaction cap a vote stays within.
 
 ## Selectors
 
@@ -237,3 +249,9 @@ The Voter, VotingEscrow and bribe beacon are upgradeable, and Algebra pools' plu
 one changes, `test/Fork.t.sol` still passes at its pinned block, so check the new implementation by hand: vendor its
 files, run `script/check-signatures.sh` and the fork test at a newer block, and re-check the facts above. A changed
 fact may need a new deployment.
+
+To move the fork test to a newer block, run `forge build`, then `test/fixtures/generate.py <block>` with
+`BASE_RPC_URL` set. The fork test deploys its own conduit through the same CREATE2 deployer with a test-only salt
+(`metadex.cafe/ImmutableVeTokenConduit/v2/fork-test`), so it works whether or not the real conduit exists at that
+block, and the generator refuses a block where that salt's address already has code. It also picks the claim tokens
+and the pool priced at the end of its range from that block. Then update the pins, addresses and counts above.

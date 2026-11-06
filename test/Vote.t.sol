@@ -184,13 +184,19 @@ contract VoteTest is ConduitTestBase {
         conduit.vote(pools, weights);
     }
 
-    function test_vote_secondVoteInSameBlockRevertsInVoter() public {
+    function test_vote_secondVoteInSameSecondRevertsInVoter() public {
         address a = _pool(100, 0);
         address b = _pool(200, 0);
         (address[] memory pools, uint256[] memory weights) = _one(a);
         conduit.vote(pools, weights);
         (pools, weights) = _one(b);
         vm.expectRevert(MockVoter.VoteDelayNotMet.selector);
+        conduit.vote(pools, weights);
+        vm.roll(block.number + 4);
+        vm.expectRevert(MockVoter.VoteDelayNotMet.selector);
+        conduit.vote(pools, weights);
+        vm.warp(block.timestamp + 1);
+        vm.roll(block.number + 1);
         conduit.vote(pools, weights);
     }
 
